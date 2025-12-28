@@ -1,3 +1,6 @@
 
 /backend/project/__pycache__
 /venv
+/backend/ranking/__pycache__
+/backend/ranking/migrations/__pycache__
+/backend/venv

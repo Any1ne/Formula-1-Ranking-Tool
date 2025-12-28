@@ -1,143 +1,143 @@
 import React, { useState } from "react";
-import Board from "./components/Board";
-import Card from "./components/Card";
-import UploadCSV from "./components/UploadCSV";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { v4 as uuidv4 } from "uuid";
+import { DragDropContext } from "@hello-pangea/dnd";
 
-const initialTeams = [];
+import Tabs from "./components/Tabs";
+import TeamsColumn from "./components/TeamsColumn";
+import BoardWrapper from "./components/BoardWrapper";
+import TeamDetails from "./components/TeamDetails";
+
+import LogsViewer from "./components/LogsViewer";
+import MatrixViewer from "./components/MatrixViewer";
+import api from "./api";
 
 function App() {
-  const [teams, setTeams] = useState(initialTeams);
+  const nextIdRef = React.useRef(1);
+  const getNextId = () => {
+  const id = nextIdRef.current;
+  nextIdRef.current += 1;
+  return id;
+};
+
+  const [teams, setTeams] = useState([]);
   const [boardTeams, setBoardTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
-  const [addingTeam, setAddingTeam] = useState(false);
-  const [newTeamName, setNewTeamName] = useState("");
+  const [currentTab, setCurrentTab] = useState("ranking");
 
   const handleDragEnd = (result) => {
     if (!result.destination) return;
     const { source, destination } = result;
 
-    // Ліва → Дошка
+    // Ліва -> Дошка
     if (source.droppableId === "teams" && destination.droppableId === "board") {
       const item = teams[source.index];
-      setTeams(prev => prev.filter((_, i) => i !== source.index));
-      setBoardTeams(prev => {
-        const newBoard = Array.from(prev);
-        newBoard.splice(destination.index, 0, item);
-        return newBoard;
+
+      setTeams((prev) => prev.filter((_, i) => i !== source.index));
+      setBoardTeams((prev) => {
+        const arr = [...prev];
+        arr.splice(destination.index, 0, item);
+        return arr;
       });
     }
 
-    // Дошка → Дошка
+    // Дошка -> Дошка
     if (source.droppableId === "board" && destination.droppableId === "board") {
-      const items = Array.from(boardTeams);
-      const [reorderedItem] = items.splice(source.index, 1);
-      items.splice(destination.index, 0, reorderedItem);
-      setBoardTeams(items);
+      const arr = [...boardTeams];
+      const [moved] = arr.splice(source.index, 1);
+      arr.splice(destination.index, 0, moved);
+      setBoardTeams(arr);
     }
   };
 
-  const handleAddTeam = () => {
-    if (!newTeamName.trim()) return;
-    const newTeam = { id: uuidv4(), name: newTeamName.trim() };
-    setTeams(prev => [...prev, newTeam]);
-    setNewTeamName("");
-    setAddingTeam(false);
-  };
+  const handleAddTeam = (name) => {
+  if (!name.trim()) return;
+
+  const newTeam = { id: getNextId(), name: name.trim() };
+
+  setTeams((prev) => [...prev, newTeam]);
+};
+
 
   const handleRemoveFromBoard = (team) => {
-    setBoardTeams(prev => prev.filter(t => t.id !== team.id));
-    setTeams(prev => [...prev, team]);
+    setBoardTeams((prev) => prev.filter((t) => t.id !== team.id));
+    setTeams((prev) => [...prev, team]);
   };
+
+  const handleSaveRanking = async () => {
+    if (boardTeams.length === 0) {
+      alert("⚠️ Дошка порожня!");
+      return;
+    }
+
+    try {
+      await api.post("/ranking/save/", {
+        order: boardTeams.map((t) => t.id),
+      });
+      alert("✅ Збережено!");
+    } catch (err) {
+      alert("❌ Помилка!");
+    }
+  };
+
+  const handleLoadSample = async () => {
+  try {
+    const response = await api.post("/objects/sample/");
+
+    const sample = response.data.map((o) => ({
+      id: getNextId(),
+      name: o.name,
+    }));
+
+    setTeams((prev) => [...prev, ...sample]);
+    alert(`Завантажено ${sample.length} об'єктів`);
+  } catch (err) {
+    alert("Помилка");
+  }
+};
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>Formula 1 Ranking Tool</h1>
       </header>
-      <main>
+      <Tabs currentTab={currentTab} setCurrentTab={setCurrentTab} />
+
+      {currentTab === "logs" && <LogsViewer />}
+      {currentTab === "matrix" && <MatrixViewer />}
+
+      {currentTab === "ranking" && (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="app-container">
-            {/* Ліва колонка */}
-            <Droppable droppableId="teams" isDropDisabled={true}>
-              {(provided) => (
-                <div
-                  className="teams-list"
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                >
-                  {teams.map((team, index) => (
-                    <Draggable key={team.id} draggableId={team.id} index={index}>
-                      {(provided) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          onClick={() => setSelectedTeam(team)}
-                        >
-                          <Card name={team.Constructor || team.name} small />
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-
-                  {/* Додати команду */}
-                  {addingTeam ? (
-                    <div style={{ marginTop: "10px" }}>
-                      <input
-                        type="text"
-                        value={newTeamName}
-                        onChange={(e) => setNewTeamName(e.target.value)}
-                        placeholder="Team Name"
-                        style={{ width: "100%", padding: "4px", borderRadius: "4px" }}
-                      />
-                      <button onClick={handleAddTeam} style={{ marginTop: "5px", width: "100%" }}>
-                        Add
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setAddingTeam(true)}
-                      style={{ marginTop: "10px", width: "100%", cursor: "pointer" }}
-                    >
-                      Add Team
-                    </button>
-                  )}
-
-                  {/* Upload CSV */}
-                  <UploadCSV setTeams={setTeams} />
-                </div>
-              )}
-            </Droppable>
-
-            {/* Центр: дошка ранжування */}
-            <Board
-              boardTeams={boardTeams}
-              onSelectTeam={setSelectedTeam}
-              onRemove={handleRemoveFromBoard}
+          <main
+            className="app-grid"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              gap: "20px",
+              alignItems: "flex-start",
+              width: "100%",
+            }}
+          >
+            <TeamsColumn
+              teams={teams}
+              addTeam={handleAddTeam}
+              loadSample={handleLoadSample}
+              setSelectedTeam={setSelectedTeam}
+              setTeams={setTeams}
+              getNextId={getNextId}
             />
 
-            {/* Права колонка: деталі вибраної команди */}
-            <div className="team-details">
-              <h3>Team Details</h3>
-              {selectedTeam ? (
-                <ul>
-                  <li><b>Constructor:</b> {selectedTeam.Constructor}</li>
-                  <li><b>Total Starts:</b> {selectedTeam.Total_Starts}</li>
-                  <li><b>GP Wins:</b> {selectedTeam.GP_Wins}</li>
-                  <li><b>Win %:</b> {selectedTeam.Win_Percentage}</li>
-                  <li><b>Pole Positions:</b> {selectedTeam.Pole_Positions}</li>
-                  <li><b>GP Podiums:</b> {selectedTeam.GP_Podiums}</li>
-                </ul>
-              ) : <p>Select a team to see details</p>}
-            </div>
-          </div>
+            <BoardWrapper
+              boardTeams={boardTeams}
+              setSelectedTeam={setSelectedTeam}
+              onRemove={handleRemoveFromBoard}
+              onSave={handleSaveRanking}
+            />
+
+            <TeamDetails selectedTeam={selectedTeam} />
+          </main>
         </DragDropContext>
-      </main>
+      )}
       <footer className="app-footer">
-        <p>© 2025 F1 Ranking Lab | Inspired by F1TV</p>
+        <p>© 2025 F1 Ranking Lab | КНУ ФІТ</p>
       </footer>
     </div>
   );
