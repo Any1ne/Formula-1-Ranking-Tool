@@ -7,6 +7,7 @@ import BoardWrapper from "./components/BoardWrapper";
 import TeamDetails from "./components/TeamDetails";
 import LogsViewer from "./components/LogsViewer";
 import MatrixViewer from "./components/MatrixViewer";
+import ConsensusViewer from "./components/ConsensusViewer";
 
 import {
   saveRanking,
@@ -32,7 +33,7 @@ function App() {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [currentTab, setCurrentTab] = useState("ranking");
 
-  // Стани для експертів (яких не вистачало)
+  // Стани для експертів
   const [experts, setExperts] = useState([]);
   const [selectedExpertId, setSelectedExpertId] = useState("");
   const [newExpertName, setNewExpertName] = useState("");
@@ -51,7 +52,6 @@ function App() {
     } else {
       // Якщо експерт не вибраний, очищаємо дошку
       setBoardTeams([]);
-      // Можна завантажити всі об'єкти в ліву колонку, якщо треба
     }
   }, [selectedExpertId]);
 
@@ -61,10 +61,6 @@ function App() {
     try {
       const data = await getExperts();
       setExperts(data);
-      // Якщо експерти є, але ніхто не вибраний - виберемо першого (опціонально)
-      if (data.length > 0 && !selectedExpertId) {
-        // setSelectedExpertId(data[0].id); // Можна розкоментувати для автовибору
-      }
     } catch (e) {
       console.error(e);
     }
@@ -203,13 +199,14 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Formula 1 Ranking Tool (Lab 2)</h1>
+        <h1>Formula 1 Ranking Tool (Lab 3)</h1>
       </header>
 
       <Tabs currentTab={currentTab} setCurrentTab={setCurrentTab} />
 
       {currentTab === "logs" && <LogsViewer />}
       {currentTab === "matrix" && <MatrixViewer experts={experts} />}
+      {currentTab === "consensus" && <ConsensusViewer />}
 
       {currentTab === "ranking" && (
         <div

@@ -1,3 +1,5 @@
+import React from "react";
+
 export default function Tabs({ currentTab, setCurrentTab }) {
   const tab = (id, label) => (
     <button
@@ -11,6 +13,7 @@ export default function Tabs({ currentTab, setCurrentTab }) {
         cursor: "pointer",
         fontSize: "16px",
         fontWeight: currentTab === id ? "bold" : "normal",
+        transition: "0.2s",
       }}
     >
       {label}
@@ -28,9 +31,10 @@ export default function Tabs({ currentTab, setCurrentTab }) {
         borderBottom: "2px solid #e10600",
       }}
     >
-      {tab("ranking", "📊 Ранжування")}
+      {tab("ranking", "🏎️ Ранжування")}
+      {tab("matrix", "🔢 Матриці")}
       {tab("logs", "📋 Протокол")}
-      {tab("matrix", "🔢 Матриця")}
+      {tab("consensus", "🏆 Компроміс")}
     </div>
   );
 }

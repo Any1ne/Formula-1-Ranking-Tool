@@ -20,6 +20,8 @@ class RankedObject(models.Model):
 
 
 class ExpertLog(models.Model):
+    # 👇 Цього поля не вистачало
+    expert = models.ForeignKey(Expert, on_delete=models.CASCADE, null=True, blank=True)
     action = models.CharField(max_length=200)
     payload = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)

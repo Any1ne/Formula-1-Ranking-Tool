@@ -15,13 +15,14 @@ class RankedObjectSerializer(serializers.ModelSerializer):
 
 
 class ExpertLogSerializer(serializers.ModelSerializer):
+    expert_name = serializers.CharField(source="expert.name", read_only=True)
+
     class Meta:
         model = ExpertLog
         fields = "__all__"
 
 
 class PairwiseMatrixSerializer(serializers.ModelSerializer):
-    # Додаємо поле, щоб фронтенд отримував ім'я експерта автоматично
     expert_name = serializers.CharField(source="expert.name", read_only=True)
 
     class Meta:

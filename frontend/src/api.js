@@ -48,7 +48,6 @@ export async function loadSampleObjects() {
 }
 
 // --- Ranking ---
-// Приймаємо expertId замість імені
 export async function saveRanking(order, expertId) {
   const res = await fetch(`${API_URL}/save-ranking/`, {
     method: "POST",
@@ -74,5 +73,11 @@ export function getCollectiveCSVUrl() {
 
 export async function getExpertRanking(expertId) {
   const res = await fetch(`${API_URL}/experts/${expertId}/ranking/`);
+  return res.json();
+}
+
+// --- Lab 3 ---
+export async function getConsensus() {
+  const res = await fetch(`${API_URL}/calculate-consensus/`);
   return res.json();
 }
