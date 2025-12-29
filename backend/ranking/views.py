@@ -201,20 +201,25 @@ def collective_matrix_csv(request):
     return response
 
 
-# --- LAB 3: CONSENSUS CALCULATION ---
-@api_view(["GET"])
+# --- LAB 3 & 4: CONSENSUS & COMPETENCE ---
+@api_view(["POST"])
 def calculate_consensus(request):
     """
-    Lab 3: Calculate consensus ranking and distances (Kemeny/Hamming).
-    Uses Borda Count (Sum of Ranks) as the compromise heuristic.
+    Labs 3 & 4:
+    - Calculates Weighted Consensus (Borda)
+    - Calculates Distances
+    - Calculates derived Competence based on distances
     """
+    # Get custom weights from request if provided, e.g. {"1": 0.5, "2": 1.0} where keys are expert IDs
+    custom_weights = request.data.get("weights", {})
+
     all_objects = list(RankedObject.objects.all())
     obj_ids = [o.id for o in all_objects]
     experts = Expert.objects.all()
 
-    expert_data = []  # Stores {name, ranks: {obj_id: rank}, vector: []}
+    expert_data = []
 
-    # 1. Collect latest rankings from all experts
+    # 1. Collect Data
     for expert in experts:
         matrix_entry = (
             PairwiseMatrix.objects.filter(expert=expert).order_by("-created_at").first()
@@ -225,63 +230,57 @@ def calculate_consensus(request):
         data = json.loads(matrix_entry.matrix_json)
         order = data.get("order", [])
 
-        # Map obj_id -> rank. If object missing, assign max_rank + 1 (penalty)
         ranks_map = {}
         max_rank = len(obj_ids) + 1
 
         for oid in obj_ids:
             try:
-                # ranks are 1-based
                 r = order.index(oid) + 1
             except ValueError:
                 r = max_rank
             ranks_map[oid] = r
+
+        # Get weight (default 1.0)
+        weight = float(custom_weights.get(str(expert.id), 1.0))
 
         expert_data.append(
             {
                 "id": expert.id,
                 "name": expert.name,
                 "ranks": ranks_map,
-                "order": order,  # raw order for pair comparisons
+                "order": order,
+                "weight": weight,
             }
         )
 
     if not expert_data:
         return Response({"error": "No expert data found"}, status=400)
 
-    # 2. Calculate Consensus (Method: Sum of Ranks / Borda)
-    # This minimizes sum of squared rank differences, proxy for L1.
+    # 2. Weighted Borda Count (Consensus)
     obj_scores = {oid: 0 for oid in obj_ids}
 
     for exp in expert_data:
         for oid, rank in exp["ranks"].items():
-            obj_scores[oid] += rank
+            # LAB 4: Score is multiplied by Expert Weight
+            obj_scores[oid] += rank * exp["weight"]
 
-    # Sort objects by score (lower score = better rank)
     consensus_order_ids = sorted(obj_scores.keys(), key=lambda oid: obj_scores[oid])
-
-    # Create rank map for consensus
     consensus_ranks = {oid: i + 1 for i, oid in enumerate(consensus_order_ids)}
 
-    # 3. Calculate Distances (Metrics)
+    # 3. Calculate Distances & Derived Competence
     results = []
 
-    # Helper for Pairwise (Hamming) Distance
     def get_pairwise_vector(order_ids, all_ids):
-        # Returns vector of signs: 1 if i>j, -1 if j>i, 0 otherwise
         vec = {}
         n = len(all_ids)
         for i in range(n):
             for j in range(i + 1, n):
                 id_a = all_ids[i]
                 id_b = all_ids[j]
-
-                # Check positions in the specific order
                 try:
                     idx_a = order_ids.index(id_a)
                 except ValueError:
                     idx_a = 999
-
                 try:
                     idx_b = order_ids.index(id_b)
                 except ValueError:
@@ -292,7 +291,6 @@ def calculate_consensus(request):
                     val = 1
                 elif idx_b < idx_a:
                     val = -1
-
                 vec[f"{id_a}-{id_b}"] = val
         return vec
 
@@ -300,30 +298,46 @@ def calculate_consensus(request):
 
     total_rank_distance = 0
     total_hamming_distance = 0
-    max_rank_distance = 0
 
+    # First pass: calculate distances
     for exp in expert_data:
-        # A. Rank Distance (Spearman Footrule L1): Sum |rank_i - rank_consensus_i|
         d_rank = 0
         for oid in obj_ids:
             d_rank += abs(exp["ranks"][oid] - consensus_ranks[oid])
 
-        # B. Hamming Distance on Pairs: Sum |b_lk^i - b_lk^consensus|
         exp_vec = get_pairwise_vector(exp["order"], obj_ids)
         d_hamming = 0
         for key in consensus_vec:
             d_hamming += abs(exp_vec[key] - consensus_vec[key])
 
-        results.append(
-            {"expert": exp["name"], "d_rank": d_rank, "d_hamming": d_hamming}
-        )
+        exp["d_rank"] = d_rank
+        exp["d_hamming"] = d_hamming
 
         total_rank_distance += d_rank
         total_hamming_distance += d_hamming
-        if d_rank > max_rank_distance:
-            max_rank_distance = d_rank
 
-    # 4. Prepare Response
+    # LAB 4: Calculate Competence Coefficient (normalized inverse distance)
+    # Using d_rank as base metric. +1 to avoid division by zero.
+    sum_inverse_dist = sum([1 / (e["d_rank"] + 1) for e in expert_data])
+
+    for exp in expert_data:
+        # Derived competence
+        comp_coef = (
+            (1 / (exp["d_rank"] + 1)) / sum_inverse_dist if sum_inverse_dist > 0 else 0
+        )
+
+        results.append(
+            {
+                "expert_id": exp["id"],
+                "expert": exp["name"],
+                "d_rank": exp["d_rank"],
+                "d_hamming": exp["d_hamming"],
+                "input_weight": exp["weight"],
+                "calculated_competence": round(comp_coef, 4),
+            }
+        )
+
+    # 4. Response
     response_data = {
         "consensus_order": [
             {
@@ -335,8 +349,7 @@ def calculate_consensus(request):
         ],
         "expert_distances": results,
         "criteria": {
-            "K1_rank (Additive)": total_rank_distance,
-            "K2_rank (Minimax)": max_rank_distance,
+            "K1_rank": total_rank_distance,
             "K1_hamming": total_hamming_distance,
         },
     }

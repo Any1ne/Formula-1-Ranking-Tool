@@ -199,7 +199,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Formula 1 Ranking Tool (Lab 3)</h1>
+        <h1>Formula 1 Ranking Tool (Lab 4)</h1>
       </header>
 
       <Tabs currentTab={currentTab} setCurrentTab={setCurrentTab} />

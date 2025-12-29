@@ -1,6 +1,5 @@
 const API_URL = "http://127.0.0.1:8000/api";
 
-// --- Experts ---
 export async function getExperts() {
   const res = await fetch(`${API_URL}/experts/`);
   return res.json();
@@ -15,7 +14,6 @@ export async function createExpert(name) {
   return res.json();
 }
 
-// --- Objects ---
 export async function getObjects() {
   const res = await fetch(`${API_URL}/objects/`);
   return res.json();
@@ -47,7 +45,6 @@ export async function loadSampleObjects() {
   return res.json();
 }
 
-// --- Ranking ---
 export async function saveRanking(order, expertId) {
   const res = await fetch(`${API_URL}/save-ranking/`, {
     method: "POST",
@@ -76,8 +73,12 @@ export async function getExpertRanking(expertId) {
   return res.json();
 }
 
-// --- Lab 3 ---
-export async function getConsensus() {
-  const res = await fetch(`${API_URL}/calculate-consensus/`);
+// ⚠️ ЗМІНЕНО ДЛЯ ЛАБ 4
+export async function getConsensus(weights = {}) {
+  const res = await fetch(`${API_URL}/calculate-consensus/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ weights }),
+  });
   return res.json();
 }
