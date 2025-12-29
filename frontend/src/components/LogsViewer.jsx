@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import api from "../api";
+import { getLogs } from "../api"; // Використовуємо іменований імпорт
 
 function LogsViewer() {
   const [logs, setLogs] = useState([]);
@@ -12,8 +12,9 @@ function LogsViewer() {
   const loadLogs = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/logs/");
-      setLogs(response.data);
+      // Викликаємо конкретну функцію getLogs, а не api.get
+      const data = await getLogs();
+      setLogs(data);
     } catch (error) {
       console.error("Error loading logs:", error);
     } finally {
@@ -147,7 +148,13 @@ function LogsViewer() {
                     marginBottom: "10px",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
                     <span style={{ fontSize: "20px" }}>
                       {getActionIcon(log.action)}
                     </span>

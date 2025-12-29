@@ -1,139 +1,97 @@
 import React, { useState, useEffect } from "react";
-import api from "../api";
+import { getMatrices, getExperts, getCollectiveCSVUrl } from "../api";
 
 function MatrixViewer() {
-  const [matrix, setMatrix] = useState(null);
+  const [allMatrices, setAllMatrices] = useState([]); // Всі завантажені
+  const [filteredMatrix, setFilteredMatrix] = useState(null); // Обрана для показу
+  const [experts, setExperts] = useState([]);
+  const [selectedExpertId, setSelectedExpertId] = useState("all");
+
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("table");
 
-  useEffect(() => {
-    loadMatrix();
-  }, []);
-
-  const loadMatrix = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/matrix/latest/");
-      const data = JSON.parse(response.data.matrix_json);
-      setMatrix(data);
+      const [matricesData, expertsData] = await Promise.all([
+        getMatrices(),
+        getExperts(),
+      ]);
+
+      setAllMatrices(matricesData);
+      setExperts(expertsData);
+
+      // За замовчуванням показуємо найсвіжішу
+      if (matricesData.length > 0) {
+        setFilteredMatrix(matricesData[0]);
+      }
     } catch (error) {
-      console.error("Error loading matrix:", error);
-      setMatrix(null);
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-const exportMatrix = () => {
-  if (!matrix) return;
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  // Сортуємо id
-  const sortedIds = [...matrix.order]
-    .map((x) => Number(x))
-    .sort((a, b) => a - b);
+  // Фільтрація при зміні селекту
+  useEffect(() => {
+    if (allMatrices.length === 0) return;
 
-  // Будуємо повну матрицю n×n
-  const n = sortedIds.length;
-  const full = Array(n)
-    .fill(null)
-    .map(() => Array(n).fill(0));
-
-  matrix.pairs.forEach(([i, j, value]) => {
-    const idxI = sortedIds.indexOf(Number(i));
-    const idxJ = sortedIds.indexOf(Number(j));
-    if (idxI !== -1 && idxJ !== -1) {
-      full[idxI][idxJ] = value;
-      full[idxJ][idxI] = -value;
+    if (selectedExpertId === "all") {
+      // Якщо "Всі" -> показуємо найсвіжішу з усіх
+      setFilteredMatrix(allMatrices[0]);
+    } else {
+      // Шукаємо найсвіжішу матрицю ЦЬОГО експерта
+      const expertMatrix = allMatrices.find(
+        (m) => m.expert === parseInt(selectedExpertId)
+      );
+      setFilteredMatrix(expertMatrix || null);
     }
-  });
+  }, [selectedExpertId, allMatrices]);
 
-  // Формуємо CSV
-  let csv = "ID," + sortedIds.join(",") + "\n";
-
-  sortedIds.forEach((rowId, i) => {
-    const row = [rowId, ...full[i]];
-    csv += row.join(",") + "\n";
-  });
-
-  // Завантаження CSV
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `pairwise_matrix_${new Date().toISOString()}.csv`;
-  link.click();
-};
-
-  if (loading) {
-    return (
-      <div style={{ color: "#fff", padding: "40px", textAlign: "center" }}>
-        Завантаження матриці...
-      </div>
-    );
-  }
-
-  if (!matrix) {
-    return (
-      <div
-        style={{
-          color: "#fff",
-          padding: "40px",
-          textAlign: "center",
-          backgroundColor: "#1a1a1a",
-          margin: "20px",
-          borderRadius: "8px",
-        }}
-      >
-        <div style={{ fontSize: "64px", marginBottom: "20px" }}>🔢</div>
-        <h3>Матриця ще не створена</h3>
-        <p style={{ color: "#888" }}>
-          Проведіть ранжування та збережіть його, щоб згенерувати матрицю
-          попарних порівнянь
-        </p>
-      </div>
-    );
-  }
-
-  // -------------------------
-  // 🔥 СОРТУВАННЯ ЗА ID
-  // -------------------------
-  const sortedIds = [...matrix.order]
-    .map((x) => Number(x))
-    .sort((a, b) => a - b);
-
-  const sortedPairs = [...matrix.pairs].sort((a, b) => {
-    if (a[0] !== b[0]) return a[0] - b[0];
-    return a[1] - b[1];
-  });
-
-  // -------------------------
-  // 🔥 ПОВНА МАТРИЦЯ N×N (за sortedIds)
-  // -------------------------
-  const buildFullMatrix = () => {
+  const exportMatrix = () => {
+    if (!filteredMatrix) return;
+    const data = JSON.parse(filteredMatrix.matrix_json);
+    const sortedIds = [...data.order]
+      .map((x) => Number(x))
+      .sort((a, b) => a - b);
     const n = sortedIds.length;
     const full = Array(n)
       .fill(null)
       .map(() => Array(n).fill(0));
 
-    matrix.pairs.forEach(([i, j, value]) => {
+    data.pairs.forEach(([i, j, value]) => {
       const idxI = sortedIds.indexOf(Number(i));
       const idxJ = sortedIds.indexOf(Number(j));
-
       if (idxI !== -1 && idxJ !== -1) {
         full[idxI][idxJ] = value;
         full[idxJ][idxI] = -value;
       }
     });
 
-    return full;
+    let csv = "ID," + sortedIds.join(",") + "\n";
+    sortedIds.forEach((rowId, i) => {
+      const row = [rowId, ...full[i]];
+      csv += row.join(",") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `matrix_${filteredMatrix.expert_name}.csv`;
+    link.click();
   };
 
-  const fullMatrix = buildFullMatrix();
-
-  // -------------------------
-  // 🔥 РЕНДЕР
-  // -------------------------
+  if (loading)
+    return (
+      <div style={{ color: "#fff", padding: "40px", textAlign: "center" }}>
+        Завантаження...
+      </div>
+    );
 
   return (
     <div
@@ -144,15 +102,117 @@ const exportMatrix = () => {
         minHeight: "calc(100vh - 200px)",
       }}
     >
-      {/* Заголовок */}
+      {/* Верхня панель: Скачати колективний + Фільтр */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "20px",
+          padding: "15px",
+          backgroundColor: "#1a1a1a",
+          borderRadius: "8px",
+        }}
+      >
+        <div>
+          <label style={{ marginRight: "10px", fontWeight: "bold" }}>
+            🔍 Показати результати експерта:
+          </label>
+          <select
+            value={selectedExpertId}
+            onChange={(e) => setSelectedExpertId(e.target.value)}
+            style={{ padding: "8px", borderRadius: "4px" }}
+          >
+            <option value="all">-- Останній запис (Всі) --</option>
+            {experts.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <a href={getCollectiveCSVUrl()} target="_blank" rel="noreferrer">
+          <button
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#4CAF50",
+              color: "#fff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            📥 Завантажити колективний звіт (CSV)
+          </button>
+        </a>
+      </div>
+
+      {!filteredMatrix ? (
+        <div style={{ textAlign: "center", padding: "40px" }}>
+          <h3>Для обраного експерта немає збережених матриць.</h3>
+        </div>
+      ) : (
+        <MatrixContent
+          matrixObj={filteredMatrix}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          loadData={loadData}
+          exportMatrix={exportMatrix}
+        />
+      )}
+    </div>
+  );
+}
+
+// Виніс відображення в окремий компонент для чистоти
+function MatrixContent({
+  matrixObj,
+  viewMode,
+  setViewMode,
+  loadData,
+  exportMatrix,
+}) {
+  const matrixData = JSON.parse(matrixObj.matrix_json);
+  const sortedIds = [...matrixData.order]
+    .map((x) => Number(x))
+    .sort((a, b) => a - b);
+  const sortedPairs = [...matrixData.pairs].sort((a, b) =>
+    a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]
+  );
+
+  const fullMatrix = Array(sortedIds.length)
+    .fill(null)
+    .map(() => Array(sortedIds.length).fill(0));
+  matrixData.pairs.forEach(([i, j, value]) => {
+    const idxI = sortedIds.indexOf(Number(i));
+    const idxJ = sortedIds.indexOf(Number(j));
+    if (idxI !== -1 && idxJ !== -1) {
+      fullMatrix[idxI][idxJ] = value;
+      fullMatrix[idxJ][idxI] = -value;
+    }
+  });
+
+  return (
+    <>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           marginBottom: "20px",
+          alignItems: "center",
         }}
       >
-        <h2 style={{ color: "#e10600" }}>🔢 Матриця попарних порівнянь</h2>
+        <div>
+          <h2 style={{ color: "#e10600", margin: 0 }}>🔢 Матриця порівнянь</h2>
+          <div style={{ color: "#888", marginTop: "5px" }}>
+            Експерт:{" "}
+            <strong style={{ color: "#fff" }}>{matrixObj.expert_name}</strong>{" "}
+            <br />
+            Час: {new Date(matrixObj.created_at).toLocaleString()}
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
           <button
@@ -162,6 +222,7 @@ const exportMatrix = () => {
               backgroundColor: viewMode === "table" ? "#e10600" : "#333",
               color: "#fff",
               borderRadius: "4px",
+              cursor: "pointer",
             }}
           >
             📋 Список
@@ -173,17 +234,19 @@ const exportMatrix = () => {
               backgroundColor: viewMode === "matrix" ? "#e10600" : "#333",
               color: "#fff",
               borderRadius: "4px",
+              cursor: "pointer",
             }}
           >
             🔲 Матриця
           </button>
           <button
-            onClick={loadMatrix}
+            onClick={loadData}
             style={{
               padding: "8px 16px",
               backgroundColor: "#333",
               color: "#fff",
               borderRadius: "4px",
+              cursor: "pointer",
             }}
           >
             🔄 Оновити
@@ -196,6 +259,7 @@ const exportMatrix = () => {
               color: "#fff",
               borderRadius: "4px",
               fontWeight: "bold",
+              cursor: "pointer",
             }}
           >
             💾 Експорт
@@ -203,61 +267,6 @@ const exportMatrix = () => {
         </div>
       </div>
 
-      {/* Статистика */}
-      <div
-        style={{
-          display: "flex",
-          gap: "20px",
-          marginBottom: "20px",
-          padding: "15px",
-          backgroundColor: "#1a1a1a",
-          borderRadius: "8px",
-        }}
-      >
-        <div>
-          <span style={{ color: "#888" }}>Кількість об'єктів:</span>{" "}
-          <strong style={{ color: "#e10600" }}>{matrix.n}</strong>
-        </div>
-        <div>
-          <span style={{ color: "#888" }}>Кількість пар:</span>{" "}
-          <strong style={{ color: "#00ff00" }}>{matrix.pairs.length}</strong>
-        </div>
-        <div>
-          <span style={{ color: "#888" }}>Формула:</span>{" "}
-          <strong>n(n−1)/2 = {(matrix.n * (matrix.n - 1)) / 2}</strong>
-        </div>
-      </div>
-
-      {/* Список ID */}
-      <div
-        style={{
-          marginBottom: "20px",
-          padding: "15px",
-          backgroundColor: "#1a1a1a",
-          borderRadius: "8px",
-        }}
-      >
-        <h4 style={{ color: "#e10600", marginBottom: "10px" }}>
-          📊 Об’єкти у порядку ID:
-        </h4>
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          {sortedIds.map((id) => (
-            <div
-              key={id}
-              style={{
-                padding: "8px 12px",
-                backgroundColor: "#0c0c0c",
-                borderRadius: "4px",
-                border: "1px solid #333",
-              }}
-            >
-              ID: {id}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Список пар */}
       {viewMode === "table" ? (
         <div style={{ overflowX: "auto" }}>
           <table
@@ -276,7 +285,6 @@ const exportMatrix = () => {
                 <th style={th}>Значення</th>
               </tr>
             </thead>
-
             <tbody>
               {sortedPairs.map((pair, idx) => (
                 <tr
@@ -298,7 +306,6 @@ const exportMatrix = () => {
           </table>
         </div>
       ) : (
-        /* Матриця n×n */
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse" }}>
             <thead>
@@ -311,15 +318,12 @@ const exportMatrix = () => {
                 ))}
               </tr>
             </thead>
-
             <tbody>
               {sortedIds.map((rowId, i) => (
                 <tr key={rowId}>
                   <td style={th}>{rowId}</td>
-
                   {sortedIds.map((colId, j) => {
                     const value = fullMatrix[i][j];
-
                     return (
                       <td
                         key={colId}
@@ -352,7 +356,7 @@ const exportMatrix = () => {
           </table>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -364,17 +368,11 @@ const th = {
   fontWeight: "bold",
   minWidth: "50px",
 };
-
 const tdCenter = {
   border: "1px solid #333",
   padding: "10px",
   textAlign: "center",
 };
-
-const tdValue = {
-  ...tdCenter,
-  color: "#00ff00",
-  fontWeight: "bold",
-};
+const tdValue = { ...tdCenter, color: "#00ff00", fontWeight: "bold" };
 
 export default MatrixViewer;
