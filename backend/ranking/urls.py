@@ -11,4 +11,5 @@ urlpatterns = [
     path("logs/", views.logs_list),
     path("latest-matrix/", views.latest_matrix),
     path("collective-csv/", views.collective_matrix_csv),
+    path("experts/<int:expert_id>/ranking/", views.get_expert_ranking),
 ]

@@ -10,6 +10,7 @@ from .serializers import (
 )
 import csv, io, json
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 
 
 # --- EXPERTS ---
@@ -25,6 +26,21 @@ def experts_list_create(request):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET"])
+def get_expert_ranking(request, expert_id):
+    expert = get_object_or_404(Expert, id=expert_id)
+    # Отримуємо найсвіжішу матрицю цього експерта
+    ranking = (
+        PairwiseMatrix.objects.filter(expert=expert).order_by("-created_at").first()
+    )
+
+    if not ranking:
+        return Response({"order": []}, status=200)
+
+    matrix_data = json.loads(ranking.matrix_json)
+    return Response({"order": matrix_data.get("order", [])}, status=200)
 
 
 # --- OBJECTS ---

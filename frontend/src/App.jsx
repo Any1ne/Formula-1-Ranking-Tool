@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 
 import Tabs from "./components/Tabs";
@@ -8,7 +8,15 @@ import TeamDetails from "./components/TeamDetails";
 import LogsViewer from "./components/LogsViewer";
 import MatrixViewer from "./components/MatrixViewer";
 
-import { saveRanking, loadSampleObjects, createObject } from "./api";
+import {
+  saveRanking,
+  loadSampleObjects,
+  createObject,
+  getExperts,
+  createExpert,
+  getObjects,
+  getExpertRanking,
+} from "./api";
 
 function App() {
   const nextIdRef = useRef(1000);
@@ -18,10 +26,101 @@ function App() {
     return id;
   };
 
+  // --- СТАНИ ---
   const [teams, setTeams] = useState([]);
   const [boardTeams, setBoardTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [currentTab, setCurrentTab] = useState("ranking");
+
+  // Стани для експертів (яких не вистачало)
+  const [experts, setExperts] = useState([]);
+  const [selectedExpertId, setSelectedExpertId] = useState("");
+  const [newExpertName, setNewExpertName] = useState("");
+
+  // --- EFEECTS ---
+
+  // 1. Завантажуємо список експертів при запуску
+  useEffect(() => {
+    loadExperts();
+  }, []);
+
+  // 2. Коли змінюється експерт, оновлюємо дошку
+  useEffect(() => {
+    if (selectedExpertId) {
+      refreshBoardForExpert(selectedExpertId);
+    } else {
+      // Якщо експерт не вибраний, очищаємо дошку
+      setBoardTeams([]);
+      // Можна завантажити всі об'єкти в ліву колонку, якщо треба
+    }
+  }, [selectedExpertId]);
+
+  // --- ЛОГІКА ---
+
+  const loadExperts = async () => {
+    try {
+      const data = await getExperts();
+      setExperts(data);
+      // Якщо експерти є, але ніхто не вибраний - виберемо першого (опціонально)
+      if (data.length > 0 && !selectedExpertId) {
+        // setSelectedExpertId(data[0].id); // Можна розкоментувати для автовибору
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateExpert = async () => {
+    if (!newExpertName.trim()) return;
+    try {
+      const newExp = await createExpert(newExpertName);
+      await loadExperts(); // оновлюємо список
+      setSelectedExpertId(newExp.id); // вибираємо нового
+      setNewExpertName("");
+      alert(`Експерт ${newExp.name} створений!`);
+    } catch (e) {
+      alert("Помилка створення експерта");
+    }
+  };
+
+  const refreshBoardForExpert = async (expertId) => {
+    try {
+      // 1. Отримуємо всі доступні об'єкти з бази
+      const allObjects = await getObjects();
+
+      // 2. Отримуємо актуальний порядок для цього експерта
+      const { order } = await getExpertRanking(expertId);
+
+      if (order && order.length > 0) {
+        // 3. Розділяємо об'єкти на "на дошці" та "в колонці"
+        const ranked = [];
+        const available = [];
+
+        // Створюємо карту для швидкого пошуку
+        const objMap = new Map(allObjects.map((obj) => [obj.id, obj]));
+
+        // Додаємо на дошку в правильному порядку
+        order.forEach((id) => {
+          if (objMap.has(id)) {
+            ranked.push(objMap.get(id));
+            objMap.delete(id);
+          }
+        });
+
+        // Решта об'єктів йдуть у вільну колонку
+        objMap.forEach((obj) => available.push(obj));
+
+        setBoardTeams(ranked);
+        setTeams(available);
+      } else {
+        // Якщо у експерта ще немає збереженого ранжування
+        setBoardTeams([]);
+        setTeams(allObjects); // Всі об'єкти доступні зліва
+      }
+    } catch (err) {
+      console.error("Помилка оновлення дошки:", err);
+    }
+  };
 
   const handleDragEnd = (result) => {
     if (!result.destination) return;
@@ -61,18 +160,23 @@ function App() {
     setTeams((prev) => [...prev, team]);
   };
 
-  // ⚠️ ОНОВЛЕНО: Отримуємо expertId з BoardWrapper
-  const handleSaveRanking = async (expertId) => {
+  const handleSaveRanking = async () => {
     if (boardTeams.length === 0) {
       alert("⚠️ Дошка порожня!");
+      return;
+    }
+    if (!selectedExpertId) {
+      alert("⚠️ Будь ласка, оберіть експерта!");
       return;
     }
 
     try {
       const order = boardTeams.map((t) => t.id);
-      // Передаємо ID обраного експерта
-      await saveRanking(order, expertId);
-      alert(`✅ Збережено!`);
+      // Передаємо ID обраного експерта зі стану
+      await saveRanking(order, selectedExpertId);
+
+      const expertName = experts.find((e) => e.id == selectedExpertId)?.name;
+      alert(`✅ Збережено для: ${expertName}!`);
     } catch (err) {
       console.error(err);
       alert("❌ Помилка збереження!");
@@ -105,12 +209,78 @@ function App() {
       <Tabs currentTab={currentTab} setCurrentTab={setCurrentTab} />
 
       {currentTab === "logs" && <LogsViewer />}
-      {currentTab === "matrix" && <MatrixViewer />}
+      {currentTab === "matrix" && <MatrixViewer experts={experts} />}
 
       {currentTab === "ranking" && (
         <div
           style={{ display: "flex", flexDirection: "column", width: "100%" }}
         >
+          {/* --- ПАНЕЛЬ ВИБОРУ ЕКСПЕРТА --- */}
+          <div
+            style={{
+              padding: "15px",
+              backgroundColor: "#1a1a1a",
+              borderBottom: "1px solid #333",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <label style={{ color: "#fff", fontWeight: "bold" }}>
+                👤 Поточний експерт:
+              </label>
+              <select
+                value={selectedExpertId}
+                onChange={(e) => setSelectedExpertId(e.target.value)}
+                style={{
+                  padding: "8px",
+                  borderRadius: "4px",
+                  minWidth: "150px",
+                }}
+              >
+                <option value="" disabled>
+                  Оберіть експерта
+                </option>
+                {experts.map((exp) => (
+                  <option key={exp.id} value={exp.id}>
+                    {exp.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{ width: "1px", height: "30px", backgroundColor: "#555" }}
+            ></div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <input
+                type="text"
+                placeholder="Новий експерт..."
+                value={newExpertName}
+                onChange={(e) => setNewExpertName(e.target.value)}
+                style={{ padding: "8px", borderRadius: "4px", border: "none" }}
+              />
+              <button
+                onClick={handleCreateExpert}
+                style={{
+                  padding: "8px 12px",
+                  backgroundColor: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                + Створити
+              </button>
+            </div>
+          </div>
+          {/* --- КІНЕЦЬ ПАНЕЛІ --- */}
+
           <DragDropContext onDragEnd={handleDragEnd}>
             <main
               className="app-grid"
@@ -136,7 +306,7 @@ function App() {
                 boardTeams={boardTeams}
                 setSelectedTeam={setSelectedTeam}
                 onRemove={handleRemoveFromBoard}
-                onSave={handleSaveRanking} // Передаємо функцію
+                onSave={handleSaveRanking}
               />
 
               <TeamDetails selectedTeam={selectedTeam} />

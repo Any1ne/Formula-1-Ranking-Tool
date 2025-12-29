@@ -71,3 +71,8 @@ export async function getMatrices() {
 export function getCollectiveCSVUrl() {
   return `${API_URL}/collective-csv/`;
 }
+
+export async function getExpertRanking(expertId) {
+  const res = await fetch(`${API_URL}/experts/${expertId}/ranking/`);
+  return res.json();
+}
