@@ -357,93 +357,155 @@ def calculate_consensus(request):
     return Response(response_data)
 
 
-# --- LAB 6: SHOWER EXPERT SYSTEM ---
+# --- LAB 6 & 7: SHOWER EXPERT SYSTEM WITH TRUST SUBSYSTEM ---
 
 
 @api_view(["POST"])
 def run_shower_inference(request):
     """
-    Вирішувач (Inference Engine) для системи керування душем.
-    Приймає поточні факти (Робоча Пам'ять), повертає результат одного кроку.
+    Вирішувач (Inference Engine) з Підсистемою Довіри (Lab 7).
     """
     facts = request.data.get("facts", {})
 
-    # Розпакування фактів для зручності
-    # f1: Є холодна, f2: Є гаряча
-    # f3: Норма, f4: Холодно, f5: Гаряче
-    # f6: Limit Cold, f7: Limit Hot
-    # f8: Крок
-
-    f1 = facts.get("f1", False)
-    f2 = facts.get("f2", False)
-    f3 = facts.get("f3", False)
-    f4 = facts.get("f4", False)
-    f5 = facts.get("f5", False)
-    f6 = facts.get("f6", False)
-    f7 = facts.get("f7", False)
-    f8 = facts.get("f8", 1)
+    f1 = facts.get("f1", False)  # Cold water available
+    f2 = facts.get("f2", False)  # Hot water available
+    f3 = facts.get("f3", False)  # Norm temp
+    f4 = facts.get("f4", False)  # Low temp
+    f5 = facts.get("f5", False)  # High temp
+    f6 = facts.get("f6", False)  # Limit Cold
+    f7 = facts.get("f7", False)  # Limit Hot
+    f8 = facts.get("f8", 1)  # Step
 
     logs = []
     action_performed = None
     updated_facts = facts.copy()
 
+    # Об'єкт пояснення для підсистеми довіри
+    explanation = {
+        "active": False,
+        "rule_name": "",
+        "condition_text": "",
+        "reasoning": "",
+    }
+
     logs.append("--- Початок циклу вирішувача ---")
 
-    # --- БАЗА ПРАВИЛ (PRODUCTIONS) ---
+    # --- БАЗА ПРАВИЛ ---
 
-    # Продукція 1: Якщо холодно (f4) і гарячий вентиль не на межі (!f7) -> Відкрити Гарячу
-    logs.append("Перевірка П1: (Low Temp AND Not Limit Hot)")
+    # Продукція 1
+    logs.append("Аналіз П1: (Холодно? ТА Гар.вентиль ок?)")
     if f4 and not f7:
-        if f2:  # Перевірка ядра (чи є гаряча вода)
-            logs.append("-> П1 АКТИВОВАНО: Відкриваємо вентиль гарячої води")
+        if f2:
+            logs.append("-> П1 АКТИВОВАНО")
             action_performed = "OPEN_HOT"
-            # Симуляція наслідків (змінюємо факти)
-            updated_facts["f4"] = False  # Вже не холодно
-            updated_facts["f3"] = True  # Стало норм
+            updated_facts["f4"] = False
+            updated_facts["f3"] = True
             updated_facts["f5"] = False
+
+            # Формування пояснення
+            explanation = {
+                "active": True,
+                "rule_name": "Продукція №1 (Збільшення температури)",
+                "condition_text": "Температура низька (f4) І Вентиль гарячої води не на межі (¬f7)",
+                "reasoning": f"Система виявила, що вода занадто холодна. Оскільки гаряча вода доступна (f2={f2}) і вентиль можна крутити, прийнято рішення відкрити гарячу воду.",
+            }
             return Response(
-                {"facts": updated_facts, "logs": logs, "action": action_performed}
+                {
+                    "facts": updated_facts,
+                    "logs": logs,
+                    "action": action_performed,
+                    "explanation": explanation,
+                }
             )
         else:
             logs.append("-> П1: Умова вірна, але немає гарячої води (f2=0)")
 
-    # Продукція 2: Якщо гаряче (f5) і холодний вентиль не на межі (!f6) -> Відкрити Холодну
-    logs.append("Перевірка П2: (High Temp AND Not Limit Cold)")
+    # Продукція 2
+    logs.append("Аналіз П2: (Гаряче? ТА Хол.вентиль ок?)")
     if f5 and not f6:
-        if f1:  # Перевірка ядра
-            logs.append("-> П2 АКТИВОВАНО: Відкриваємо вентиль холодної води")
+        if f1:
+            logs.append("-> П2 АКТИВОВАНО")
             action_performed = "OPEN_COLD"
-            # Симуляція наслідків
-            updated_facts["f5"] = False  # Вже не гаряче
-            updated_facts["f3"] = True  # Стало норм
+            updated_facts["f5"] = False
+            updated_facts["f3"] = True
             updated_facts["f4"] = False
+
+            explanation = {
+                "active": True,
+                "rule_name": "Продукція №2 (Зменшення температури)",
+                "condition_text": "Температура висока (f5) І Вентиль холодної води не на межі (¬f6)",
+                "reasoning": f"Система виявила перегрів води. Оскільки холодна вода є в наявності (f1={f1}), для нормалізації температури вирішено додати холодної води.",
+            }
             return Response(
-                {"facts": updated_facts, "logs": logs, "action": action_performed}
+                {
+                    "facts": updated_facts,
+                    "logs": logs,
+                    "action": action_performed,
+                    "explanation": explanation,
+                }
             )
         else:
             logs.append("-> П2: Умова вірна, але немає холодної води (f1=0)")
 
-    # Продукція 3: Якщо гаряче (f5) і гарячий вентиль не на межі (!f7) -> Закрити Гарячу
-    logs.append("Перевірка П3: (High Temp AND Not Limit Hot)")
+    # Продукція 3 (Альтернатива для охолодження)
+    logs.append("Аналіз П3: (Гаряче? ТА Гар.вентиль ок?)")
     if f5 and not f7:
-        logs.append("-> П3 АКТИВОВАНО: Закриваємо вентиль гарячої води")
+        logs.append("-> П3 АКТИВОВАНО")
         action_performed = "CLOSE_HOT"
         updated_facts["f5"] = False
         updated_facts["f3"] = True
+
+        explanation = {
+            "active": True,
+            "rule_name": "Продукція №3 (Економія/Альтернатива)",
+            "condition_text": "Температура висока (f5) І Можна закрити гарячу (¬f7)",
+            "reasoning": "Вода занадто гаряча. Замість додавання холодної (можливо, її немає або це стратегія економії), система вирішила зменшити потік гарячої води.",
+        }
         return Response(
-            {"facts": updated_facts, "logs": logs, "action": action_performed}
+            {
+                "facts": updated_facts,
+                "logs": logs,
+                "action": action_performed,
+                "explanation": explanation,
+            }
         )
 
-    # Продукція 4: Якщо холодно (f4) і холодний вентиль не на межі (!f6) -> Закрити Холодну
-    logs.append("Перевірка П4: (Low Temp AND Not Limit Cold)")
+    # Продукція 4 (Альтернатива для нагріву)
+    logs.append("Аналіз П4: (Холодно? ТА Хол.вентиль ок?)")
     if f4 and not f6:
-        logs.append("-> П4 АКТИВОВАНО: Закриваємо вентиль холодної води")
+        logs.append("-> П4 АКТИВОВАНО")
         action_performed = "CLOSE_COLD"
         updated_facts["f4"] = False
         updated_facts["f3"] = True
+
+        explanation = {
+            "active": True,
+            "rule_name": "Продукція №4 (Альтернатива нагріву)",
+            "condition_text": "Температура низька (f4) І Можна закрити холодну (¬f6)",
+            "reasoning": "Вода холодна. Система вирішила зменшити потік холодної води, щоб збільшити загальну температуру суміші.",
+        }
         return Response(
-            {"facts": updated_facts, "logs": logs, "action": action_performed}
+            {
+                "facts": updated_facts,
+                "logs": logs,
+                "action": action_performed,
+                "explanation": explanation,
+            }
         )
 
-    logs.append("Жодне правило не спрацювало. Система в рівновазі або ціль досягнута.")
-    return Response({"facts": updated_facts, "logs": logs, "action": "NONE"})
+    logs.append("Стан рівноваги. Жодних дій не потрібно.")
+    explanation = {
+        "active": False,
+        "rule_name": "Стан спокою",
+        "condition_text": "Всі параметри в нормі або неможливо виконати дію",
+        "reasoning": "Цільовий стан (нормальна температура) досягнуто (f3=True) або відсутні ресурси для регулювання.",
+    }
+
+    return Response(
+        {
+            "facts": updated_facts,
+            "logs": logs,
+            "action": "NONE",
+            "explanation": explanation,
+        }
+    )
