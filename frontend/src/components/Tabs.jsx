@@ -36,7 +36,7 @@ export default function Tabs({ currentTab, setCurrentTab }) {
       {tab("matrix", "🔢 Матриці")}
       {tab("logs", "📋 Протокол")}
       {tab("consensus", "🏆 Компроміс")}
-      {tab("shower", "🚿 Душ (Lab 6)")}
+      {tab("shower", "🚿 Душ (Lab 6-8)")}
     </div>
   );
 }

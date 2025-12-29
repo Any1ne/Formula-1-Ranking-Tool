@@ -357,14 +357,8 @@ def calculate_consensus(request):
     return Response(response_data)
 
 
-# --- LAB 6 & 7: SHOWER EXPERT SYSTEM WITH TRUST SUBSYSTEM ---
-
-
 @api_view(["POST"])
 def run_shower_inference(request):
-    """
-    Вирішувач (Inference Engine) з Підсистемою Довіри (Lab 7).
-    """
     facts = request.data.get("facts", {})
 
     f1 = facts.get("f1", False)  # Cold water available
@@ -374,13 +368,15 @@ def run_shower_inference(request):
     f5 = facts.get("f5", False)  # High temp
     f6 = facts.get("f6", False)  # Limit Cold
     f7 = facts.get("f7", False)  # Limit Hot
-    f8 = facts.get("f8", 1)  # Step
+
+    # Нові/розширені факти (можна передавати з фронтенду або виводити тут)
+    # Для простоти припустимо, що f5=High - це просто гаряче, а Critical Hot - це окремий стан,
+    # але в рамках поточних змінних використаємо комбінацію.
 
     logs = []
     action_performed = None
     updated_facts = facts.copy()
 
-    # Об'єкт пояснення для підсистеми довіри
     explanation = {
         "active": False,
         "rule_name": "",
@@ -390,7 +386,51 @@ def run_shower_inference(request):
 
     logs.append("--- Початок циклу вирішувача ---")
 
-    # --- БАЗА ПРАВИЛ ---
+    # --- НОВЕ ПРАВИЛО П0: Аварія водопостачання ---
+    logs.append("Аналіз П0: (Чи є взагалі вода?)")
+    if not f1 and not f2:
+        logs.append("-> П0 АКТИВОВАНО: АВАРІЯ")
+        action_performed = "ALARM_NO_WATER"
+        explanation = {
+            "active": True,
+            "rule_name": "Продукція №0 (Аварія)",
+            "condition_text": "Немає холодної (¬f1) І Немає гарячої (¬f2)",
+            "reasoning": "Критична ситуація: відсутнє водопостачання. Система не може регулювати температуру. Необхідне втручання оператора.",
+        }
+        return Response(
+            {
+                "facts": updated_facts,
+                "logs": logs,
+                "action": action_performed,
+                "explanation": explanation,
+            }
+        )
+
+    # --- НОВЕ ПРАВИЛО П5: Захист від опіків (якщо немає холодної, а вода гаряча) ---
+    logs.append("Аналіз П5: (Небезпека опіку?)")
+    if f5 and not f1:
+        # Гаряче, а холодної води немає -> Єдиний вихід закрити гарячу
+        logs.append("-> П5 АКТИВОВАНО: ЕКСТРЕНЕ ВІДКЛЮЧЕННЯ")
+        action_performed = "EMERGENCY_CLOSE_HOT"
+        updated_facts["f5"] = False  # Вважаємо, що після закриття небезпека зникла
+        # f3 не ставимо в True, бо води немає
+
+        explanation = {
+            "active": True,
+            "rule_name": "Продукція №5 (Захист від опіків)",
+            "condition_text": "Температура висока (f5) І Немає холодної води (¬f1)",
+            "reasoning": "Увага! Вода гаряча, а холодна вода для розбавлення відсутня. Щоб уникнути опіків, система приймає екстрене рішення перекрити гарячу воду.",
+        }
+        return Response(
+            {
+                "facts": updated_facts,
+                "logs": logs,
+                "action": action_performed,
+                "explanation": explanation,
+            }
+        )
+
+    # --- СТАРІ ПРАВИЛА (П1-П4) ---
 
     # Продукція 1
     logs.append("Аналіз П1: (Холодно? ТА Гар.вентиль ок?)")
@@ -402,7 +442,6 @@ def run_shower_inference(request):
             updated_facts["f3"] = True
             updated_facts["f5"] = False
 
-            # Формування пояснення
             explanation = {
                 "active": True,
                 "rule_name": "Продукція №1 (Збільшення температури)",
@@ -445,9 +484,10 @@ def run_shower_inference(request):
                 }
             )
         else:
+            # Тут спрацює П5 на наступній ітерації або якщо ми змінимо порядок
             logs.append("-> П2: Умова вірна, але немає холодної води (f1=0)")
 
-    # Продукція 3 (Альтернатива для охолодження)
+    # Продукція 3
     logs.append("Аналіз П3: (Гаряче? ТА Гар.вентиль ок?)")
     if f5 and not f7:
         logs.append("-> П3 АКТИВОВАНО")
@@ -459,7 +499,7 @@ def run_shower_inference(request):
             "active": True,
             "rule_name": "Продукція №3 (Економія/Альтернатива)",
             "condition_text": "Температура висока (f5) І Можна закрити гарячу (¬f7)",
-            "reasoning": "Вода занадто гаряча. Замість додавання холодної (можливо, її немає або це стратегія економії), система вирішила зменшити потік гарячої води.",
+            "reasoning": "Вода занадто гаряча. Замість додавання холодної, система вирішила зменшити потік гарячої води.",
         }
         return Response(
             {
@@ -470,7 +510,7 @@ def run_shower_inference(request):
             }
         )
 
-    # Продукція 4 (Альтернатива для нагріву)
+    # Продукція 4
     logs.append("Аналіз П4: (Холодно? ТА Хол.вентиль ок?)")
     if f4 and not f6:
         logs.append("-> П4 АКТИВОВАНО")
@@ -493,12 +533,12 @@ def run_shower_inference(request):
             }
         )
 
-    logs.append("Стан рівноваги. Жодних дій не потрібно.")
+    logs.append("Стан рівноваги.")
     explanation = {
         "active": False,
         "rule_name": "Стан спокою",
-        "condition_text": "Всі параметри в нормі або неможливо виконати дію",
-        "reasoning": "Цільовий стан (нормальна температура) досягнуто (f3=True) або відсутні ресурси для регулювання.",
+        "condition_text": "Всі параметри в нормі",
+        "reasoning": "Цільовий стан досягнуто (f3=True) або відсутні ресурси.",
     }
 
     return Response(
