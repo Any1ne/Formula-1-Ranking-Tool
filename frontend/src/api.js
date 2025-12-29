@@ -73,12 +73,20 @@ export async function getExpertRanking(expertId) {
   return res.json();
 }
 
-// ⚠️ ЗМІНЕНО ДЛЯ ЛАБ 4
 export async function getConsensus(weights = {}) {
   const res = await fetch(`${API_URL}/calculate-consensus/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ weights }),
+  });
+  return res.json();
+}
+
+export async function runShowerInference(facts) {
+  const res = await fetch(`${API_URL}/shower-inference/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ facts }),
   });
   return res.json();
 }

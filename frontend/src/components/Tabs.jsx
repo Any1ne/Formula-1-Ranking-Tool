@@ -29,12 +29,14 @@ export default function Tabs({ currentTab, setCurrentTab }) {
         backgroundColor: "#1a1a1a",
         justifyContent: "center",
         borderBottom: "2px solid #e10600",
+        flexWrap: "wrap",
       }}
     >
       {tab("ranking", "🏎️ Ранжування")}
       {tab("matrix", "🔢 Матриці")}
       {tab("logs", "📋 Протокол")}
       {tab("consensus", "🏆 Компроміс")}
+      {tab("shower", "🚿 Душ (Lab 6)")}
     </div>
   );
 }

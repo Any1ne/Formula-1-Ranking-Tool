@@ -8,6 +8,7 @@ import TeamDetails from "./components/TeamDetails";
 import LogsViewer from "./components/LogsViewer";
 import MatrixViewer from "./components/MatrixViewer";
 import ConsensusViewer from "./components/ConsensusViewer";
+import ShowerExpertSystem from "./components/ShowerExpertSystem";
 
 import {
   saveRanking,
@@ -207,6 +208,7 @@ function App() {
       {currentTab === "logs" && <LogsViewer />}
       {currentTab === "matrix" && <MatrixViewer experts={experts} />}
       {currentTab === "consensus" && <ConsensusViewer />}
+      {currentTab === "shower" && <ShowerExpertSystem />}
 
       {currentTab === "ranking" && (
         <div

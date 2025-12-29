@@ -14,4 +14,6 @@ urlpatterns = [
     path("experts/<int:expert_id>/ranking/", views.get_expert_ranking),
     # New Lab 3 Endpoint
     path("calculate-consensus/", views.calculate_consensus),
+    # Lab 6
+    path("shower-inference/", views.run_shower_inference),
 ]
