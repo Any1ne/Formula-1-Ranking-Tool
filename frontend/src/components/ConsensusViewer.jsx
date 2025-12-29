@@ -46,21 +46,29 @@ export default function ConsensusViewer() {
   const handleExportCSV = () => {
     if (!data) return;
 
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // UTF-8 BOM
+    // Розраховуємо K2 (Max distance) для експорту, якщо його немає з бекенду
+    const k2_calc = Math.max(...data.expert_distances.map((e) => e.d_rank));
 
-    // Заголовки
+    // BOM для коректного відображення кирилиці в Excel
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+
+    // Заголовки таблиці компетентності
     csvContent +=
       "Експерт;Початкова Вага;Відстань (d_rank);Обернена відстань (1/(d+1));Норм. Компетентність;Компетентність %\n";
 
-    // Дані
+    // Роздільник для Excel (в українській локалі це зазвичай крапка з комою)
     const separator = ";";
+
+    // Функція для форматування чисел (крапка -> кома)
+    const fmt = (num) =>
+      num !== undefined && num !== null ? num.toString().replace(".", ",") : "";
+
+    // 1. Дані експертів
     data.expert_distances.forEach((exp) => {
       const dist = exp.d_rank;
       const invDist = 1 / (dist + 1);
       const comp = exp.calculated_competence;
       const compPercent = (comp * 100).toFixed(2) + "%";
-
-      const fmt = (num) => num.toString().replace(".", ",");
 
       const row = [
         `"${exp.expert}"`,
@@ -74,35 +82,24 @@ export default function ConsensusViewer() {
       csvContent += row + "\n";
     });
 
-    // Блок критеріїв
+    // 2. Блок критеріїв
     csvContent += "\n";
     csvContent += "Критерії Оптимальності\n";
-    // Увага: переконайтеся, що ключі відповідають тим, що приходять з бекенду (views.py)
-    // У нашому бекенді це "K1_rank" і "K1_hamming". K2 розраховуємо на льоту або додаємо на бекенді.
-    // Якщо на бекенді немає K2, тут він буде undefined. Перевірте views.py!
-    // (У моєму попередньому коді views.py K2 не було, я додав його нижче).
+    csvContent += `K1 (Адитивний);${fmt(data.criteria["K1_rank"] || 0)}\n`;
+    csvContent += `K2 (Мінімакс);${fmt(k2_calc)}\n`;
+    csvContent += `K1 (Хемінга);${fmt(data.criteria["K1_hamming"] || 0)}\n`;
 
-    csvContent += `K1 (Адитивний);${(data.criteria["K1_rank"] || 0)
-      .toString()
-      .replace(".", ",")}\n`;
-    // Якщо K2 немає в criteria, візьмемо max з d_rank
-    const k2_calc = Math.max(...data.expert_distances.map((e) => e.d_rank));
-    csvContent += `K2 (Мінімакс);${k2_calc}\n`;
-
-    csvContent += `K1 (Хемінга);${(data.criteria["K1_hamming"] || 0)
-      .toString()
-      .replace(".", ",")}\n`;
-
-    // Ранжування
+    // 3. Компромісне ранжування
     csvContent += "\n";
     csvContent += "Компромісне Ранжування (Метод Борда)\n";
     csvContent += "Ранг;Об'єкт;Сума Балів\n";
     data.consensus_order.forEach((item, index) => {
-      csvContent += `${index + 1};"${item.name}";${item.score
-        .toFixed(1)
-        .replace(".", ",")}\n`;
+      csvContent += `${index + 1};"${item.name}";${fmt(
+        item.score.toFixed(1)
+      )}\n`;
     });
 
+    // Створення та клік по лінку
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -124,7 +121,7 @@ export default function ConsensusViewer() {
       </div>
     );
 
-  // Обчислення K2 на клієнті, якщо бекенд не надсилає
+  // Обчислення K2 на клієнті для відображення
   const k2_rank = Math.max(...data.expert_distances.map((e) => e.d_rank));
 
   return (
@@ -136,6 +133,7 @@ export default function ConsensusViewer() {
         minHeight: "80vh",
       }}
     >
+      {/* ЗАГОЛОВОК І КНОПКИ */}
       <div
         style={{
           display: "flex",
@@ -174,13 +172,13 @@ export default function ConsensusViewer() {
               fontWeight: "bold",
             }}
           >
-            💾 Експорт у CSV
+            💾 Експорт у CSV (Excel)
           </button>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
-        {/* ЛІВА КОЛОНКА */}
+        {/* ЛІВА КОЛОНКА: Ранжування */}
         <div
           style={{
             flex: 1,
@@ -219,7 +217,7 @@ export default function ConsensusViewer() {
           </ol>
         </div>
 
-        {/* ПРАВА КОЛОНКА */}
+        {/* ПРАВА КОЛОНКА: Таблиця */}
         <div
           style={{
             flex: 2,
