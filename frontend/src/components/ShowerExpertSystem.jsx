@@ -19,7 +19,6 @@ const particleStyles = `
 
 const WaterParticles = ({ state }) => {
   if (state === "UNKNOWN") return null;
-
   const particles = Array.from({ length: 6 });
 
   return (
@@ -33,34 +32,28 @@ const WaterParticles = ({ state }) => {
       }}
     >
       <style>{particleStyles}</style>
-
-      {/* Основний стовп води */}
       <div
         style={{
           width: "16px",
           height: "100%",
+          margin: "0 auto",
+          opacity: 0.8,
+          borderRadius: "0 0 8px 8px",
           background:
             state === "LOW"
               ? "#3B82F6"
               : state === "HIGH"
               ? "#EF4444"
-              : "#10B981", // Flat colors
-          margin: "0 auto",
-          opacity: 0.8,
-          borderRadius: "0 0 8px 8px",
+              : "#10B981",
         }}
       ></div>
-
-      {/* Частинки */}
       {particles.map((_, i) => {
         const delay = Math.random() * 2;
         const left = Math.random() * 20 - 10;
-
         let style = {};
         let content = "";
 
         if (state === "LOW") {
-          // Сніжинки (сині кола)
           content = "❄";
           style = {
             position: "absolute",
@@ -72,7 +65,6 @@ const WaterParticles = ({ state }) => {
             animationDelay: `${delay}s`,
           };
         } else if (state === "HIGH") {
-          // Пара (білі кола, що летять вгору)
           style = {
             position: "absolute",
             bottom: "0",
@@ -85,8 +77,6 @@ const WaterParticles = ({ state }) => {
             animationDelay: `${delay}s`,
           };
         }
-        // Для 'NORM' частинок немає, тільки чистий потік
-
         return (
           <div key={i} style={style}>
             {content}
@@ -97,57 +87,196 @@ const WaterParticles = ({ state }) => {
   );
 };
 
+// --- КОМПОНЕНТ ДАШБОРДУ СТАНУ ---
+const FactsDashboard = ({ facts }) => {
+  const descriptions = {
+    f1: "Холодний потік є",
+    f2: "Гарячий потік є",
+    f3: "Температура НОРМА",
+    f4: "Температура НИЗЬКА",
+    f5: "Температура ВИСОКА",
+    f6: "Холодна MIN (0%)",
+    f7: "Гаряча MIN (0%)",
+    f8: "Крок регулювання",
+    f9: "Холодна MAX (100%)",
+    f10: "Гаряча MAX (100%)",
+  };
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(5, 1fr)",
+        gap: "8px",
+        marginBottom: "20px",
+        backgroundColor: "#111",
+        padding: "15px",
+        borderRadius: "12px",
+        border: "1px solid #333",
+      }}
+    >
+      <div
+        style={{
+          gridColumn: "1 / -1",
+          fontSize: "11px",
+          color: "#666",
+          textTransform: "uppercase",
+          marginBottom: "5px",
+        }}
+      >
+        Live Facts Monitor (Knowledge Base State)
+      </div>
+      {Object.entries(facts).map(([key, value]) => (
+        <div
+          key={key}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            backgroundColor: value
+              ? "rgba(16, 185, 129, 0.1)"
+              : "rgba(255, 255, 255, 0.05)",
+            border: `1px solid ${value ? "#10B981" : "#333"}`,
+            borderRadius: "6px",
+            padding: "8px",
+            alignItems: "center",
+            transition: "all 0.3s ease",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: "bold",
+              fontSize: "14px",
+              color: value ? "#10B981" : "#555",
+            }}
+          >
+            {key}
+          </div>
+          <div
+            style={{
+              fontSize: "9px",
+              color: value ? "#D1FAE5" : "#777",
+              textAlign: "center",
+              marginTop: "2px",
+            }}
+          >
+            {descriptions[key] || key}
+          </div>
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "9px",
+              fontWeight: "bold",
+              color: value ? "#10B981" : "#444",
+            }}
+          >
+            {value.toString().toUpperCase()}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export default function ShowerExpertSystem() {
-  // Логічні факти (для бекенду)
+  // --- FACTS ---
   const [facts, setFacts] = useState({
-    f1: true,
-    f2: true,
-    f3: false,
-    f4: false,
-    f5: true,
-    f6: false,
-    f7: false,
-    f8: 1,
+    f1: true, // Cold flow exists
+    f2: true, // Hot flow exists
+    f3: false, // Normal
+    f4: false, // Cold
+    f5: true, // Hot
+    f6: false, // Cold Min Limit
+    f7: false, // Hot Min Limit
+    f8: 0.1, // Step size (Крок регулювання)
+    f9: false, // Cold Max Limit
+    f10: false, // Hot Max Limit
   });
 
-  // Візуальний стан кранів (0-100)
+  // --- PHYSICAL STATE ---
   const [coldLevel, setColdLevel] = useState(0);
-  const [hotLevel, setHotLevel] = useState(100); // Початково High Temp -> Hot open
+  const [hotLevel, setHotLevel] = useState(100);
 
+  // --- LOGIC STATE ---
+  const [userOverride, setUserOverride] = useState(false);
   const [logs, setLogs] = useState([]);
   const [lastAction, setLastAction] = useState("");
   const [explanation, setExplanation] = useState(null);
 
-  // Визначення температури для відображення
-  const getTempState = () => {
+  // --- PHYSICS CALCULATION ---
+  const getPhysicalTempState = () => {
     if (!facts.f1 && !facts.f2) return "UNKNOWN";
-    if (facts.f4) return "LOW";
-    if (facts.f5) return "HIGH";
-    if (facts.f3) return "NORM";
-    // Якщо вода змішується (обидва крани > 0), вважаємо норма, якщо не вказано інше
-    if (coldLevel > 0 && hotLevel > 0) return "NORM";
-    return "UNKNOWN";
+    const diff = hotLevel - coldLevel;
+    if (diff > 15) return "HIGH";
+    if (diff < -15) return "LOW";
+    if (coldLevel === 0 && hotLevel === 0) return "UNKNOWN";
+    return "NORM";
   };
+
+  // --- SYNC EFFECT ---
+  useEffect(() => {
+    setFacts((prev) => {
+      let newState = { ...prev };
+      let changed = false;
+
+      // 1. LIMITS SYNC
+      const coldMin = coldLevel <= 0;
+      const coldMax = coldLevel >= 100;
+      if (prev.f6 !== coldMin) {
+        newState.f6 = coldMin;
+        changed = true;
+      }
+      if (prev.f9 !== coldMax) {
+        newState.f9 = coldMax;
+        changed = true;
+      }
+
+      const hotMin = hotLevel <= 0;
+      const hotMax = hotLevel >= 100;
+      if (prev.f7 !== hotMin) {
+        newState.f7 = hotMin;
+        changed = true;
+      }
+      if (prev.f10 !== hotMax) {
+        newState.f10 = hotMax;
+        changed = true;
+      }
+
+      // 2. FEELINGS SYNC
+      if (!userOverride) {
+        const physState = getPhysicalTempState();
+        if (physState === "LOW") {
+          if (!prev.f4 || prev.f3 || prev.f5) {
+            newState = { ...newState, f4: true, f3: false, f5: false };
+            changed = true;
+          }
+        } else if (physState === "HIGH") {
+          if (!prev.f5 || prev.f3 || prev.f4) {
+            newState = { ...newState, f4: false, f3: false, f5: true };
+            changed = true;
+          }
+        } else if (physState === "NORM") {
+          if (!prev.f3 || prev.f4 || prev.f5) {
+            newState = { ...newState, f4: false, f3: true, f5: false };
+            changed = true;
+          }
+        }
+      }
+      return changed ? newState : prev;
+    });
+  }, [coldLevel, hotLevel, facts.f1, facts.f2, userOverride]);
 
   const toggleFact = (key) =>
     setFacts((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // --- СИНХРОНІЗАЦІЯ СИМУЛЯЦІЇ ---
-  // Ця функція встановлює і логічні факти, і положення кранів
-  const setSimulationState = (type) => {
-    if (type === "LOW") {
+  const handleUserFeeling = (type) => {
+    setUserOverride(true);
+    if (type === "LOW")
       setFacts((p) => ({ ...p, f4: true, f3: false, f5: false }));
-      setColdLevel(100); // Відкриваємо холодну
-      setHotLevel(0); // Закриваємо гарячу
-    } else if (type === "NORM") {
+    else if (type === "NORM")
       setFacts((p) => ({ ...p, f4: false, f3: true, f5: false }));
-      setColdLevel(50); // Обидві наполовину
-      setHotLevel(50);
-    } else if (type === "HIGH") {
+    else if (type === "HIGH")
       setFacts((p) => ({ ...p, f4: false, f3: false, f5: true }));
-      setColdLevel(0);
-      setHotLevel(100);
-    }
+    else if (type === "AUTO") setUserOverride(false);
   };
 
   const handleStep = async () => {
@@ -155,19 +284,20 @@ export default function ShowerExpertSystem() {
       const res = await runShowerInference(facts);
       const timestamp = new Date().toLocaleTimeString();
       setLogs((prev) => [`[${timestamp}] ${res.action}`, ...prev]);
+
       setFacts(res.facts);
       setLastAction(res.action);
       setExplanation(res.explanation);
 
-      // Оновлюємо візуалізацію кранів на основі дії вирішувача
+      const step = 10;
       if (res.action === "OPEN_COLD")
-        setColdLevel((prev) => Math.min(prev + 50, 100));
+        setColdLevel((prev) => Math.min(prev + step, 100));
       if (res.action === "CLOSE_COLD")
-        setColdLevel((prev) => Math.max(prev - 50, 0));
+        setColdLevel((prev) => Math.max(prev - step, 0));
       if (res.action === "OPEN_HOT")
-        setHotLevel((prev) => Math.min(prev + 50, 100));
+        setHotLevel((prev) => Math.min(prev + step, 100));
       if (res.action === "CLOSE_HOT")
-        setHotLevel((prev) => Math.max(prev - 50, 0));
+        setHotLevel((prev) => Math.max(prev - step, 0));
     } catch (e) {
       console.error(e);
       alert("Помилка API");
@@ -175,6 +305,7 @@ export default function ShowerExpertSystem() {
   };
 
   const resetSystem = () => {
+    setUserOverride(false);
     setFacts({
       f1: true,
       f2: true,
@@ -184,13 +315,17 @@ export default function ShowerExpertSystem() {
       f6: false,
       f7: false,
       f8: 1,
+      f9: false,
+      f10: false,
     });
     setColdLevel(0);
-    setHotLevel(100); // Скидаємо в аварійний (High) стан
+    setHotLevel(100);
     setLogs([]);
     setLastAction("");
     setExplanation(null);
   };
+
+  const systemPerception = getPhysicalTempState();
 
   return (
     <div
@@ -203,24 +338,26 @@ export default function ShowerExpertSystem() {
       }}
     >
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        <header style={{ textAlign: "center", marginBottom: "40px" }}>
+        <header style={{ textAlign: "center", marginBottom: "30px" }}>
           <h2
             style={{
               fontSize: "28px",
               fontWeight: "800",
               color: "#e10600",
               margin: 0,
-              letterSpacing: "-0.5px",
             }}
           >
-            Інтелектуальна Система "Душ"
+            Інтелектуальна Система "Душ" 2.0
           </h2>
           <p style={{ color: "#6B7280", marginTop: "5px" }}>
-            Експертна система з продукційною логікою (Lab 8)
+            Версія з розширеною обробкою лімітів (Min/Max)
           </p>
         </header>
 
-        {/* --- ГОЛОВНА ВІЗУАЛІЗАЦІЯ --- */}
+        {/* --- DASHBOARD --- */}
+        <FactsDashboard facts={facts} />
+
+        {/* --- MAIN VISUALIZATION --- */}
         <div
           style={{
             backgroundColor: "#151515",
@@ -234,7 +371,7 @@ export default function ShowerExpertSystem() {
             alignItems: "flex-start",
           }}
         >
-          {/* Ліва сторона: Холодна */}
+          {/* LEFT: COLD */}
           <div
             style={{
               display: "flex",
@@ -256,30 +393,48 @@ export default function ShowerExpertSystem() {
             <Valve
               type="COLD"
               level={coldLevel}
-              limit={facts.f6}
-              onLimitChange={() => toggleFact("f6")}
+              onManualChange={setColdLevel}
             />
 
-            {/* Індикатор води */}
+            <div
+              style={{
+                marginTop: "5px",
+                height: "15px",
+                fontSize: "10px",
+                fontWeight: "bold",
+                textAlign: "center",
+              }}
+            >
+              {facts.f6 && (
+                <span style={{ color: "#EF4444" }}>🛑 MIN LIMIT</span>
+              )}
+              {facts.f9 && (
+                <span style={{ color: "#EF4444" }}>🛑 MAX LIMIT</span>
+              )}
+              {!facts.f6 && !facts.f9 && (
+                <span style={{ color: "#333" }}>OK</span>
+              )}
+            </div>
+
             <div
               onClick={() => toggleFact("f1")}
               style={{
-                marginTop: "20px",
-                padding: "8px 16px",
-                borderRadius: "8px",
+                marginTop: "15px",
+                padding: "6px 12px",
+                borderRadius: "6px",
                 backgroundColor: facts.f1 ? "#1E3A8A" : "#222",
                 border: `1px solid ${facts.f1 ? "#3B82F6" : "#444"}`,
                 color: facts.f1 ? "#93C5FD" : "#666",
                 cursor: "pointer",
-                fontSize: "12px",
+                fontSize: "11px",
                 fontWeight: "bold",
               }}
             >
-              {facts.f1 ? "ВОДА Є" : "НЕМАЄ ВОДИ"}
+              {facts.f1 ? "ПОТІК Є" : "НЕМАЄ ВОДИ"}
             </div>
           </div>
 
-          {/* Центр: Змішувач */}
+          {/* CENTER: MIXER */}
           <div
             style={{
               display: "flex",
@@ -288,7 +443,6 @@ export default function ShowerExpertSystem() {
               width: "200px",
             }}
           >
-            {/* Труби */}
             <div
               style={{
                 display: "flex",
@@ -305,7 +459,6 @@ export default function ShowerExpertSystem() {
                   borderRadius: "0 0 15px 0",
                 }}
               >
-                {/* Внутрішній колір труби */}
                 {facts.f1 && (
                   <div
                     style={{
@@ -339,8 +492,6 @@ export default function ShowerExpertSystem() {
                 )}
               </div>
             </div>
-
-            {/* Блок змішувача */}
             <div
               style={{
                 width: "80px",
@@ -362,73 +513,122 @@ export default function ShowerExpertSystem() {
                 }}
               ></div>
             </div>
+            <WaterParticles state={systemPerception} />
 
-            {/* Анімована вода */}
-            <WaterParticles state={getTempState()} />
-
-            {/* Панель симуляції (під водою) */}
             <div
               style={{
                 marginTop: "50px",
                 backgroundColor: "#222",
                 padding: "15px",
                 borderRadius: "12px",
-                border: "1px solid #333",
+                border: userOverride ? "1px solid #e10600" : "1px solid #333",
+                width: "100%",
+                transition: "0.3s",
               }}
             >
               <div
                 style={{
-                  fontSize: "10px",
-                  color: "#888",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                   marginBottom: "8px",
-                  textAlign: "center",
-                  textTransform: "uppercase",
                 }}
               >
-                Симуляція Датчиків
+                <span
+                  style={{
+                    fontSize: "10px",
+                    color: "#888",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Відчуття
+                </span>
+                <span
+                  style={{
+                    fontSize: "9px",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    background: userOverride ? "#e10600" : "#333",
+                    color: "#fff",
+                  }}
+                >
+                  {userOverride ? "MANUAL" : "AUTO-SYNC"}
+                </span>
               </div>
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "5px",
+                  justifyContent: "center",
+                }}
+              >
                 <button
-                  onClick={() => setSimulationState("LOW")}
+                  onClick={() => handleUserFeeling("LOW")}
                   style={{
-                    width: "30px",
+                    flex: 1,
                     height: "30px",
-                    borderRadius: "50%",
-                    background: "#3B82F6",
-                    border: facts.f4 ? "2px solid white" : "none",
+                    borderRadius: "6px",
+                    background: "#1a1a1a",
+                    color: "#3B82F6",
+                    border: facts.f4 ? "1px solid #3B82F6" : "1px solid #333",
                     cursor: "pointer",
+                    fontSize: "10px",
                   }}
-                  title="Зробити Холодно"
-                ></button>
+                >
+                  Холодно!
+                </button>
                 <button
-                  onClick={() => setSimulationState("NORM")}
+                  onClick={() => handleUserFeeling("NORM")}
                   style={{
-                    width: "30px",
+                    flex: 1,
                     height: "30px",
-                    borderRadius: "50%",
-                    background: "#10B981",
-                    border: facts.f3 ? "2px solid white" : "none",
+                    borderRadius: "6px",
+                    background: "#1a1a1a",
+                    color: "#10B981",
+                    border: facts.f3 ? "1px solid #10B981" : "1px solid #333",
                     cursor: "pointer",
+                    fontSize: "10px",
                   }}
-                  title="Зробити Нормально"
-                ></button>
+                >
+                  Ок
+                </button>
                 <button
-                  onClick={() => setSimulationState("HIGH")}
+                  onClick={() => handleUserFeeling("HIGH")}
                   style={{
-                    width: "30px",
+                    flex: 1,
                     height: "30px",
-                    borderRadius: "50%",
-                    background: "#EF4444",
-                    border: facts.f5 ? "2px solid white" : "none",
+                    borderRadius: "6px",
+                    background: "#1a1a1a",
+                    color: "#EF4444",
+                    border: facts.f5 ? "1px solid #EF4444" : "1px solid #333",
                     cursor: "pointer",
+                    fontSize: "10px",
                   }}
-                  title="Зробити Гаряче"
-                ></button>
+                >
+                  Гаряче!
+                </button>
               </div>
+              {userOverride && (
+                <button
+                  onClick={() => handleUserFeeling("AUTO")}
+                  style={{
+                    width: "100%",
+                    marginTop: "8px",
+                    padding: "4px",
+                    background: "transparent",
+                    border: "1px dashed #555",
+                    color: "#888",
+                    fontSize: "9px",
+                    cursor: "pointer",
+                  }}
+                >
+                  🔄 Авто
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Права сторона: Гаряча */}
+          {/* RIGHT: HOT */}
           <div
             style={{
               display: "flex",
@@ -447,38 +647,52 @@ export default function ShowerExpertSystem() {
             >
               INPUT B
             </div>
-            <Valve
-              type="HOT"
-              level={hotLevel}
-              limit={facts.f7}
-              onLimitChange={() => toggleFact("f7")}
-            />
+            <Valve type="HOT" level={hotLevel} onManualChange={setHotLevel} />
+
+            <div
+              style={{
+                marginTop: "5px",
+                height: "15px",
+                fontSize: "10px",
+                fontWeight: "bold",
+                textAlign: "center",
+              }}
+            >
+              {facts.f7 && (
+                <span style={{ color: "#EF4444" }}>🛑 MIN LIMIT</span>
+              )}
+              {facts.f10 && (
+                <span style={{ color: "#EF4444" }}>🛑 MAX LIMIT</span>
+              )}
+              {!facts.f7 && !facts.f10 && (
+                <span style={{ color: "#333" }}>OK</span>
+              )}
+            </div>
 
             <div
               onClick={() => toggleFact("f2")}
               style={{
-                marginTop: "20px",
-                padding: "8px 16px",
-                borderRadius: "8px",
+                marginTop: "15px",
+                padding: "6px 12px",
+                borderRadius: "6px",
                 backgroundColor: facts.f2 ? "#7F1D1D" : "#222",
                 border: `1px solid ${facts.f2 ? "#EF4444" : "#444"}`,
                 color: facts.f2 ? "#FCA5A5" : "#666",
                 cursor: "pointer",
-                fontSize: "12px",
+                fontSize: "11px",
                 fontWeight: "bold",
               }}
             >
-              {facts.f2 ? "ВОДА Є" : "НЕМАЄ ВОДИ"}
+              {facts.f2 ? "ПОТІК Є" : "НЕМАЄ ВОДИ"}
             </div>
           </div>
 
-          {/* Термометр */}
           <div style={{ position: "absolute", right: "30px", top: "50px" }}>
-            <Thermometer tempState={getTempState()} />
+            <Thermometer tempState={systemPerception} />
           </div>
         </div>
 
-        {/* --- НИЖНЯ ЧАСТИНА: ПОЯСНЕННЯ --- */}
+        {/* --- BOTTOM: EXPLANATION --- */}
         <div
           style={{
             display: "grid",
@@ -486,7 +700,6 @@ export default function ShowerExpertSystem() {
             gap: "20px",
           }}
         >
-          {/* Картка пояснень */}
           <div
             style={{
               backgroundColor: "#151515",
@@ -503,9 +716,8 @@ export default function ShowerExpertSystem() {
                 textTransform: "uppercase",
               }}
             >
-              Логіка Рішень
+              Центр прийняття рішень
             </h3>
-
             {explanation ? (
               <div style={{ animation: "fadeIn 0.5s" }}>
                 <div
@@ -537,7 +749,7 @@ export default function ShowerExpertSystem() {
                   </div>
                   <div>
                     <div style={{ fontSize: "12px", color: "#666" }}>
-                      ВИКОНАНА ДІЯ
+                      РЕАКЦІЯ СИСТЕМИ
                     </div>
                     <div
                       style={{
@@ -546,11 +758,10 @@ export default function ShowerExpertSystem() {
                         color: "#fff",
                       }}
                     >
-                      {lastAction || "Очікування..."}
+                      {lastAction}
                     </div>
                   </div>
                 </div>
-
                 {explanation.active && (
                   <div
                     style={{
@@ -596,10 +807,9 @@ export default function ShowerExpertSystem() {
                   borderRadius: "12px",
                 }}
               >
-                Система очікує на вхідні дані для аналізу...
+                Очікування вхідних даних...
               </div>
             )}
-
             <div style={{ marginTop: "25px", display: "flex", gap: "10px" }}>
               <button
                 onClick={handleStep}
@@ -615,7 +825,7 @@ export default function ShowerExpertSystem() {
                   transition: "0.2s",
                 }}
               >
-                Зробити крок аналізу
+                Виконати крок регулювання (AI)
               </button>
               <button
                 onClick={resetSystem}
@@ -633,8 +843,6 @@ export default function ShowerExpertSystem() {
               </button>
             </div>
           </div>
-
-          {/* Логи */}
           <div
             style={{
               backgroundColor: "#151515",

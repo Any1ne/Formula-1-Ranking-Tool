@@ -1,11 +1,17 @@
 import React from "react";
 
-const Valve = ({ type, level, limit, step, onLimitChange }) => {
-  // level: 0 to 100 (ступінь відкриття)
-  const color = type === "COLD" ? "#3B82F6" : "#EF4444"; // Brilliant Blue / Red
+const Valve = ({ type, level, onManualChange }) => {
+  // level: 0 to 100
+  const color = type === "COLD" ? "#3B82F6" : "#EF4444";
 
   // Розрахунок кута: 0% = -135deg, 100% = +135deg
   const angle = -135 + (level / 100) * 270;
+  const stepSize = 10; // Крок для ручної зміни
+
+  const handleChange = (delta) => {
+    const newVal = Math.min(Math.max(level + delta, 0), 100);
+    if (onManualChange) onManualChange(newVal);
+  };
 
   return (
     <div
@@ -19,7 +25,6 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
       {/* SVG Регулятор (Knob) */}
       <div style={{ position: "relative", width: "120px", height: "120px" }}>
         <svg width="120" height="120" viewBox="0 0 100 100">
-          {/* Шкала (фонова дуга) */}
           <path
             d="M 20 80 A 40 40 0 1 1 80 80"
             fill="none"
@@ -27,8 +32,6 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
             strokeWidth="6"
             strokeLinecap="round"
           />
-
-          {/* Активна дуга (рівень відкриття) */}
           <path
             d="M 20 80 A 40 40 0 1 1 80 80"
             fill="none"
@@ -37,7 +40,7 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
             strokeLinecap="round"
             strokeDasharray="251"
             strokeDashoffset={251 - (251 * level) / 100}
-            style={{ transition: "stroke-dashoffset 0.5s ease" }}
+            style={{ transition: "stroke-dashoffset 0.3s ease" }}
           />
         </svg>
 
@@ -53,14 +56,13 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
             borderRadius: "50%",
             backgroundColor: "#1a1a1a",
             border: `2px solid ${color}`,
-            transition: "transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transition: "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
             display: "flex",
             justifyContent: "center",
             boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
             zIndex: 10,
           }}
         >
-          {/* Вказівник */}
           <div
             style={{
               width: "4px",
@@ -70,8 +72,6 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
               borderRadius: "2px",
             }}
           ></div>
-
-          {/* Індикатор відсотка всередині ручки */}
           <div
             style={{
               position: "absolute",
@@ -83,57 +83,66 @@ const Valve = ({ type, level, limit, step, onLimitChange }) => {
               fontWeight: "bold",
             }}
           >
-            {level}%
+            {Math.round(level)}%
           </div>
         </div>
       </div>
 
-      {/* Підписи */}
-      <div style={{ marginTop: "5px", textAlign: "center" }}>
+      {/* Панель ручного керування */}
+      <div
+        style={{
+          marginTop: "15px",
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          gap: "5px",
+          alignItems: "center",
+        }}
+      >
         <div
           style={{
             color: "#aaa",
             fontSize: "12px",
             textTransform: "uppercase",
             letterSpacing: "1px",
+            marginBottom: "5px",
           }}
         >
-          Вентиль {type === "COLD" ? "Холодної" : "Гарячої"}
+          {type === "COLD" ? "Холодна" : "Гаряча"}
         </div>
-        <div style={{ color: "#666", fontSize: "11px", marginTop: "2px" }}>
-          Крок регулювання: <span style={{ color: "#fff" }}>{step}%</span>
-        </div>
-      </div>
 
-      {/* Перемикач ліміту (імітація датчика кінцевого положення) */}
-      <div
-        onClick={onLimitChange}
-        title="Натисніть, щоб імітувати досягнення межі"
-        style={{
-          marginTop: "12px",
-          padding: "4px 10px",
-          borderRadius: "12px",
-          backgroundColor: limit ? "rgba(239, 68, 68, 0.15)" : "transparent",
-          border: `1px solid ${limit ? "#EF4444" : "#444"}`,
-          color: limit ? "#EF4444" : "#555",
-          fontSize: "10px",
-          fontWeight: "bold",
-          cursor: "pointer",
-          transition: "0.2s",
-          display: "flex",
-          alignItems: "center",
-          gap: "5px",
-        }}
-      >
-        <div
-          style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            backgroundColor: limit ? "#EF4444" : "#555",
-          }}
-        ></div>
-        {limit ? "LIMIT REACHED" : "NO LIMIT"}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            onClick={() => handleChange(-stepSize)}
+            style={{
+              width: "30px",
+              height: "30px",
+              borderRadius: "8px",
+              border: "1px solid #444",
+              background: "#222",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: "16px",
+            }}
+          >
+            -
+          </button>
+          <button
+            onClick={() => handleChange(stepSize)}
+            style={{
+              width: "30px",
+              height: "30px",
+              borderRadius: "8px",
+              border: "1px solid #444",
+              background: "#222",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: "16px",
+            }}
+          >
+            +
+          </button>
+        </div>
       </div>
     </div>
   );
