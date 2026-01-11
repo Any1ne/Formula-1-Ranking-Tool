@@ -87,27 +87,25 @@ const WaterParticles = ({ state }) => {
   );
 };
 
-// --- КОМПОНЕНТ ДАШБОРДУ СТАНУ ---
+// --- КОМПОНЕНТ ДАШБОРДУ СТАНУ (8 Фактів) ---
 const FactsDashboard = ({ facts }) => {
   const descriptions = {
-    f1: "Холодний потік є",
-    f2: "Гарячий потік є",
-    f3: "Температура НОРМА",
-    f4: "Температура НИЗЬКА",
-    f5: "Температура ВИСОКА",
-    f6: "Холодна MIN (0%)",
-    f7: "Гаряча MIN (0%)",
+    f1: "Гаряча відкр (>0)",
+    f2: "Холодна відкр (>0)",
+    f3: "Гаряча МАКС (100)",
+    f4: "Холодна МАКС (100)",
+    f5: "Вода ГАРЯЧА",
+    f6: "Вода ХОЛОДНА",
+    f7: "Вода ТЕПЛА (Норм)",
     f8: "Крок регулювання",
-    f9: "Холодна MAX (100%)",
-    f10: "Гаряча MAX (100%)",
   };
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(5, 1fr)",
-        gap: "8px",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: "10px",
         marginBottom: "20px",
         backgroundColor: "#111",
         padding: "15px",
@@ -164,7 +162,7 @@ const FactsDashboard = ({ facts }) => {
           <div
             style={{
               marginTop: "4px",
-              fontSize: "9px",
+              fontSize: "10px",
               fontWeight: "bold",
               color: value ? "#10B981" : "#444",
             }}
@@ -178,23 +176,21 @@ const FactsDashboard = ({ facts }) => {
 };
 
 export default function ShowerExpertSystem() {
-  // --- FACTS ---
+  // --- FACTS (Classic Lab 5 Logic) ---
   const [facts, setFacts] = useState({
-    f1: true, // Cold flow exists
-    f2: true, // Hot flow exists
-    f3: false, // Normal
-    f4: false, // Cold
-    f5: true, // Hot
-    f6: false, // Cold Min Limit
-    f7: false, // Hot Min Limit
-    f8: 0.1, // Step size (Крок регулювання)
-    f9: false, // Cold Max Limit
-    f10: false, // Hot Max Limit
+    f1: false, // Hot Open (>0)
+    f2: false, // Cold Open (>0)
+    f3: false, // Hot Max (100)
+    f4: false, // Cold Max (100)
+    f5: false, // High Temp
+    f6: false, // Low Temp
+    f7: false, // Norm Temp
+    f8: 10, // Step Size
   });
 
   // --- PHYSICAL STATE ---
   const [coldLevel, setColdLevel] = useState(0);
-  const [hotLevel, setHotLevel] = useState(100);
+  const [hotLevel, setHotLevel] = useState(0);
 
   // --- LOGIC STATE ---
   const [userOverride, setUserOverride] = useState(false);
@@ -204,79 +200,43 @@ export default function ShowerExpertSystem() {
 
   // --- PHYSICS CALCULATION ---
   const getPhysicalTempState = () => {
-    if (!facts.f1 && !facts.f2) return "UNKNOWN";
+    if (coldLevel === 0 && hotLevel === 0) return "UNKNOWN";
     const diff = hotLevel - coldLevel;
     if (diff > 15) return "HIGH";
     if (diff < -15) return "LOW";
-    if (coldLevel === 0 && hotLevel === 0) return "UNKNOWN";
     return "NORM";
   };
 
-  // --- SYNC EFFECT ---
+  // --- SYNC EFFECT (Logic from New Version) ---
   useEffect(() => {
     setFacts((prev) => {
-      let newState = { ...prev };
-      let changed = false;
+      const newState = { ...prev };
 
-      // 1. LIMITS SYNC
-      const coldMin = coldLevel <= 0;
-      const coldMax = coldLevel >= 100;
-      if (prev.f6 !== coldMin) {
-        newState.f6 = coldMin;
-        changed = true;
-      }
-      if (prev.f9 !== coldMax) {
-        newState.f9 = coldMax;
-        changed = true;
-      }
+      // Physical limits mapping
+      newState.f1 = hotLevel > 0;
+      newState.f2 = coldLevel > 0;
+      newState.f3 = hotLevel >= 100;
+      newState.f4 = coldLevel >= 100;
 
-      const hotMin = hotLevel <= 0;
-      const hotMax = hotLevel >= 100;
-      if (prev.f7 !== hotMin) {
-        newState.f7 = hotMin;
-        changed = true;
-      }
-      if (prev.f10 !== hotMax) {
-        newState.f10 = hotMax;
-        changed = true;
-      }
-
-      // 2. FEELINGS SYNC
+      // Auto-Feelings mapping
       if (!userOverride) {
         const physState = getPhysicalTempState();
-        if (physState === "LOW") {
-          if (!prev.f4 || prev.f3 || prev.f5) {
-            newState = { ...newState, f4: true, f3: false, f5: false };
-            changed = true;
-          }
-        } else if (physState === "HIGH") {
-          if (!prev.f5 || prev.f3 || prev.f4) {
-            newState = { ...newState, f4: false, f3: false, f5: true };
-            changed = true;
-          }
-        } else if (physState === "NORM") {
-          if (!prev.f3 || prev.f4 || prev.f5) {
-            newState = { ...newState, f4: false, f3: true, f5: false };
-            changed = true;
-          }
-        }
+        newState.f5 = physState === "HIGH";
+        newState.f6 = physState === "LOW";
+        newState.f7 = physState === "NORM";
       }
-      return changed ? newState : prev;
+      return newState;
     });
-  }, [coldLevel, hotLevel, facts.f1, facts.f2, userOverride]);
-
-  const toggleFact = (key) =>
-    setFacts((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, [coldLevel, hotLevel, userOverride]);
 
   const handleUserFeeling = (type) => {
     setUserOverride(true);
-    if (type === "LOW")
-      setFacts((p) => ({ ...p, f4: true, f3: false, f5: false }));
-    else if (type === "NORM")
-      setFacts((p) => ({ ...p, f4: false, f3: true, f5: false }));
-    else if (type === "HIGH")
-      setFacts((p) => ({ ...p, f4: false, f3: false, f5: true }));
-    else if (type === "AUTO") setUserOverride(false);
+    setFacts((p) => ({
+      ...p,
+      f5: type === "HIGH",
+      f6: type === "LOW",
+      f7: type === "NORM",
+    }));
   };
 
   const handleStep = async () => {
@@ -285,11 +245,12 @@ export default function ShowerExpertSystem() {
       const timestamp = new Date().toLocaleTimeString();
       setLogs((prev) => [`[${timestamp}] ${res.action}`, ...prev]);
 
-      setFacts(res.facts);
+      // Update UI with decision
       setLastAction(res.action);
       setExplanation(res.explanation);
 
-      const step = 10;
+      // Execute Action
+      const step = facts.f8;
       if (res.action === "OPEN_COLD")
         setColdLevel((prev) => Math.min(prev + step, 100));
       if (res.action === "CLOSE_COLD")
@@ -306,20 +267,9 @@ export default function ShowerExpertSystem() {
 
   const resetSystem = () => {
     setUserOverride(false);
-    setFacts({
-      f1: true,
-      f2: true,
-      f3: false,
-      f4: false,
-      f5: true,
-      f6: false,
-      f7: false,
-      f8: 1,
-      f9: false,
-      f10: false,
-    });
     setColdLevel(0);
-    setHotLevel(100);
+    setHotLevel(0);
+    setFacts((prev) => ({ ...prev, f8: 10 })); // Reset step but keep structure
     setLogs([]);
     setLastAction("");
     setExplanation(null);
@@ -347,10 +297,10 @@ export default function ShowerExpertSystem() {
               margin: 0,
             }}
           >
-            Інтелектуальна Система "Душ" 2.0
+            Інтелектуальна Система "Душ" 3.5
           </h2>
           <p style={{ color: "#6B7280", marginTop: "5px" }}>
-            Версія з розширеною обробкою лімітів (Min/Max)
+            Класична логіка (8 фактів) + Розширений інтерфейс
           </p>
         </header>
 
@@ -399,38 +349,16 @@ export default function ShowerExpertSystem() {
             <div
               style={{
                 marginTop: "5px",
-                height: "15px",
                 fontSize: "10px",
                 fontWeight: "bold",
-                textAlign: "center",
+                color: facts.f4 ? "#EF4444" : "#666",
               }}
             >
-              {facts.f6 && (
-                <span style={{ color: "#EF4444" }}>🛑 MIN LIMIT</span>
-              )}
-              {facts.f9 && (
-                <span style={{ color: "#EF4444" }}>🛑 MAX LIMIT</span>
-              )}
-              {!facts.f6 && !facts.f9 && (
-                <span style={{ color: "#333" }}>OK</span>
-              )}
-            </div>
-
-            <div
-              onClick={() => toggleFact("f1")}
-              style={{
-                marginTop: "15px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                backgroundColor: facts.f1 ? "#1E3A8A" : "#222",
-                border: `1px solid ${facts.f1 ? "#3B82F6" : "#444"}`,
-                color: facts.f1 ? "#93C5FD" : "#666",
-                cursor: "pointer",
-                fontSize: "11px",
-                fontWeight: "bold",
-              }}
-            >
-              {facts.f1 ? "ПОТІК Є" : "НЕМАЄ ВОДИ"}
+              {facts.f4
+                ? "🛑 MAX LIMIT (f4)"
+                : facts.f2
+                ? "✅ OPEN (f2)"
+                : "⭕ CLOSED"}
             </div>
           </div>
 
@@ -443,6 +371,7 @@ export default function ShowerExpertSystem() {
               width: "200px",
             }}
           >
+            {/* PIPES */}
             <div
               style={{
                 display: "flex",
@@ -459,7 +388,7 @@ export default function ShowerExpertSystem() {
                   borderRadius: "0 0 15px 0",
                 }}
               >
-                {facts.f1 && (
+                {facts.f2 && (
                   <div
                     style={{
                       width: "100%",
@@ -479,7 +408,7 @@ export default function ShowerExpertSystem() {
                   borderRadius: "0 0 0 15px",
                 }}
               >
-                {facts.f2 && (
+                {facts.f1 && (
                   <div
                     style={{
                       width: "100%",
@@ -492,6 +421,8 @@ export default function ShowerExpertSystem() {
                 )}
               </div>
             </div>
+
+            {/* MIXER BOX */}
             <div
               style={{
                 width: "80px",
@@ -513,8 +444,11 @@ export default function ShowerExpertSystem() {
                 }}
               ></div>
             </div>
+
+            {/* WATER */}
             <WaterParticles state={systemPerception} />
 
+            {/* CONTROLS */}
             <div
               style={{
                 marginTop: "50px",
@@ -570,12 +504,12 @@ export default function ShowerExpertSystem() {
                     borderRadius: "6px",
                     background: "#1a1a1a",
                     color: "#3B82F6",
-                    border: facts.f4 ? "1px solid #3B82F6" : "1px solid #333",
+                    border: facts.f6 ? "1px solid #3B82F6" : "1px solid #333",
                     cursor: "pointer",
                     fontSize: "10px",
                   }}
                 >
-                  Холодно!
+                  ❄️
                 </button>
                 <button
                   onClick={() => handleUserFeeling("NORM")}
@@ -585,12 +519,12 @@ export default function ShowerExpertSystem() {
                     borderRadius: "6px",
                     background: "#1a1a1a",
                     color: "#10B981",
-                    border: facts.f3 ? "1px solid #10B981" : "1px solid #333",
+                    border: facts.f7 ? "1px solid #10B981" : "1px solid #333",
                     cursor: "pointer",
                     fontSize: "10px",
                   }}
                 >
-                  Ок
+                  👌
                 </button>
                 <button
                   onClick={() => handleUserFeeling("HIGH")}
@@ -605,12 +539,12 @@ export default function ShowerExpertSystem() {
                     fontSize: "10px",
                   }}
                 >
-                  Гаряче!
+                  🔥
                 </button>
               </div>
               {userOverride && (
                 <button
-                  onClick={() => handleUserFeeling("AUTO")}
+                  onClick={() => setUserOverride(false)}
                   style={{
                     width: "100%",
                     marginTop: "8px",
@@ -622,7 +556,7 @@ export default function ShowerExpertSystem() {
                     cursor: "pointer",
                   }}
                 >
-                  🔄 Авто
+                  🔄 Auto-sync
                 </button>
               )}
             </div>
@@ -652,38 +586,16 @@ export default function ShowerExpertSystem() {
             <div
               style={{
                 marginTop: "5px",
-                height: "15px",
                 fontSize: "10px",
                 fontWeight: "bold",
-                textAlign: "center",
+                color: facts.f3 ? "#EF4444" : "#666",
               }}
             >
-              {facts.f7 && (
-                <span style={{ color: "#EF4444" }}>🛑 MIN LIMIT</span>
-              )}
-              {facts.f10 && (
-                <span style={{ color: "#EF4444" }}>🛑 MAX LIMIT</span>
-              )}
-              {!facts.f7 && !facts.f10 && (
-                <span style={{ color: "#333" }}>OK</span>
-              )}
-            </div>
-
-            <div
-              onClick={() => toggleFact("f2")}
-              style={{
-                marginTop: "15px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                backgroundColor: facts.f2 ? "#7F1D1D" : "#222",
-                border: `1px solid ${facts.f2 ? "#EF4444" : "#444"}`,
-                color: facts.f2 ? "#FCA5A5" : "#666",
-                cursor: "pointer",
-                fontSize: "11px",
-                fontWeight: "bold",
-              }}
-            >
-              {facts.f2 ? "ПОТІК Є" : "НЕМАЄ ВОДИ"}
+              {facts.f3
+                ? "🛑 MAX LIMIT (f3)"
+                : facts.f1
+                ? "✅ OPEN (f1)"
+                : "⭕ CLOSED"}
             </div>
           </div>
 
@@ -692,7 +604,7 @@ export default function ShowerExpertSystem() {
           </div>
         </div>
 
-        {/* --- BOTTOM: EXPLANATION --- */}
+        {/* --- BOTTOM: LOGIC & LOGS --- */}
         <div
           style={{
             display: "grid",
@@ -700,6 +612,7 @@ export default function ShowerExpertSystem() {
             gap: "20px",
           }}
         >
+          {/* Logic Panel */}
           <div
             style={{
               backgroundColor: "#151515",
@@ -708,16 +621,47 @@ export default function ShowerExpertSystem() {
               border: "1px solid #333",
             }}
           >
-            <h3
+            <div
               style={{
-                margin: "0 0 20px 0",
-                fontSize: "14px",
-                color: "#888",
-                textTransform: "uppercase",
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "20px",
               }}
             >
-              Центр прийняття рішень
-            </h3>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "14px",
+                  color: "#888",
+                  textTransform: "uppercase",
+                }}
+              >
+                Центр прийняття рішень
+              </h3>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
+                <span style={{ fontSize: "11px", color: "#666" }}>
+                  Крок (f8):
+                </span>
+                <input
+                  type="number"
+                  value={facts.f8}
+                  onChange={(e) =>
+                    setFacts((p) => ({ ...p, f8: Number(e.target.value) }))
+                  }
+                  style={{
+                    width: "40px",
+                    background: "#333",
+                    color: "#fff",
+                    border: "1px solid #555",
+                    borderRadius: "4px",
+                    padding: "2px",
+                  }}
+                />
+              </div>
+            </div>
+
             {explanation ? (
               <div style={{ animation: "fadeIn 0.5s" }}>
                 <div
@@ -792,7 +736,8 @@ export default function ShowerExpertSystem() {
                         fontFamily: "monospace",
                       }}
                     >
-                      RULE_ID: {explanation.rule_name}
+                      RULE_ID: {explanation.rule_name} <br />
+                      COND: {explanation.condition_text}
                     </div>
                   </div>
                 )}
@@ -843,6 +788,8 @@ export default function ShowerExpertSystem() {
               </button>
             </div>
           </div>
+
+          {/* Logs */}
           <div
             style={{
               backgroundColor: "#151515",

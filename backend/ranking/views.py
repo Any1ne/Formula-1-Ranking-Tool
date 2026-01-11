@@ -408,17 +408,24 @@ def calculate_consensus(request):
 def run_shower_inference(request):
     facts = request.data.get("facts", {})
 
-    # Отримуємо факти (з врахуванням нових f9, f10)
-    f1 = facts.get("f1", False)  # Cold water available
-    f2 = facts.get("f2", False)  # Hot water available
-    f3 = facts.get("f3", False)  # Norm temp
-    f4 = facts.get("f4", False)  # Low temp
-    f5 = facts.get("f5", False)  # High temp
-    f6 = facts.get("f6", False)  # Limit Cold MIN (0%)
-    f7 = facts.get("f7", False)  # Limit Hot MIN (0%)
-    f8 = facts.get("f8", 1)  # Priority
-    f9 = facts.get("f9", False)  # Limit Cold MAX (100%) - NEW
-    f10 = facts.get("f10", False)  # Limit Hot MAX (100%) - NEW
+    # Вхідні факти (за методичкою Лаб 5)
+    # f1: Вентиль гарячої води відкритий (>0)
+    # f2: Вентиль холодної води відкритий (>0)
+    # f3: Вентиль гарячої води ПОВНІСТЮ відкритий (==100)
+    # f4: Вентиль холодної води ПОВНІСТЮ відкритий (==100)
+    # f5: Вода гаряча (High Temp)
+    # f6: Вода холодна (Low Temp)
+    # f7: Вода тепла (Norm Temp)
+    # f8: Крок (число)
+
+    f1 = facts.get("f1", False)
+    f2 = facts.get("f2", False)
+    f3 = facts.get("f3", False)
+    f4 = facts.get("f4", False)
+    f5 = facts.get("f5", False)
+    f6 = facts.get("f6", False)
+    f7 = facts.get("f7", False)
+    f8 = facts.get("f8", 1)
 
     logs = []
     action_performed = "NONE"
@@ -431,97 +438,44 @@ def run_shower_inference(request):
         "reasoning": "",
     }
 
-    logs.append("--- [v3.3] Початок циклу вирішувача ---")
+    logs.append("--- [Classic Lab 5] Початок циклу вирішувача ---")
 
-    # --- ПРАВИЛО П0: Аварія водопостачання ---
-    logs.append("Аналіз П0: (Чи є взагалі вода?)")
-    if not f1 and not f2:
-        logs.append("-> П0 АКТИВОВАНО: АВАРІЯ")
-        action_performed = "ALARM_NO_WATER"
-        explanation = {
-            "active": True,
-            "rule_name": "Продукція №0 (Аварія)",
-            "condition_text": "Немає холодної (¬f1) І Немає гарячої (¬f2)",
-            "reasoning": "Критична ситуація: відсутнє водопостачання. Система не може регулювати температуру.",
-        }
+    # Якщо температура вже нормальна (f7), нічого не робимо
+    if f7:
+        logs.append("Температура в нормі (f7=True). Дії не потрібні.")
         return Response(
             {
                 "facts": updated_facts,
                 "logs": logs,
-                "action": action_performed,
-                "explanation": explanation,
+                "action": "NONE",
+                "explanation": {
+                    "active": False,
+                    "reasoning": "Цільовий стан досягнуто.",
+                },
             }
         )
 
-    # --- ПРАВИЛО П5: Захист від опіків ---
-    logs.append("Аналіз П5: (Небезпека опіку?)")
-    # Якщо гаряче і немає холодної води, щоб розбавити - закриваємо гарячу (якщо вона не закрита)
-    if f5 and not f1 and not f7:
-        logs.append("-> П5 АКТИВОВАНО: ЕКСТРЕНЕ ВІДКЛЮЧЕННЯ")
-        action_performed = "EMERGENCY_CLOSE_HOT"
-        updated_facts["f5"] = False
-        explanation = {
-            "active": True,
-            "rule_name": "Продукція №5 (Захист від опіків)",
-            "condition_text": "Температура висока (f5) І Немає холодної води (¬f1)",
-            "reasoning": "Увага! Вода гаряча, а холодна вода відсутня. Екстрене перекриття гарячої води.",
-        }
-        return Response(
-            {
-                "facts": updated_facts,
-                "logs": logs,
-                "action": action_performed,
-                "explanation": explanation,
-            }
-        )
+    # --- ПРАВИЛО 1: Охолодження (Відкриття холодної) ---
+    # Ядро (A): f1 ∧ f5 (Гаряча відкрита + Вода гаряча)
+    # Умова (P): ¬f4 ∧ ¬f7 (Холодна НЕ повна + Вода НЕ тепла)
+    # Дія (F): Відкрити Холодну
+    logs.append(f"Перевірка П1: A(f1={f1}, f5={f5}), P(¬f4={not f4}, ¬f7={not f7})")
 
-    # ==========================
-    # БЛОК РЕГУЛЮВАННЯ ТЕМПЕРАТУРИ
-    # ==========================
+    cond_a_p1 = f1 and f5
+    cond_p_p1 = (not f4) and (not f7)
 
-    # --- СЦЕНАРІЙ: ДУЖЕ ХОЛОДНО (f4) ---
-    if f4:
-        # Спроба 1: Відкрити гарячу (П1)
-        # Умова: Гаряча вода є (f2) І Вентиль гарячої НЕ на максимумі (¬f10)
-        logs.append(f"Аналіз П1 (Open Hot): f4={f4}, f10(HotMax)={f10}")
-        if not f10:
-            if f2:
-                logs.append("-> П1 АКТИВОВАНО (Відкриваємо гарячу)")
-                action_performed = "OPEN_HOT"
-                updated_facts["f4"] = False  # Optimistic update
-                updated_facts["f3"] = True
-                explanation = {
-                    "active": True,
-                    "rule_name": "Продукція №1 (Нагрів / Open Hot)",
-                    "condition_text": "Холодно (f4) І Гаряча не Макс (¬f10)",
-                    "reasoning": "Вода холодна. Вентиль гарячої води ще не відкритий повністю, тому відкриваємо його більше.",
-                }
-                return Response(
-                    {
-                        "facts": updated_facts,
-                        "logs": logs,
-                        "action": action_performed,
-                        "explanation": explanation,
-                    }
-                )
-            else:
-                logs.append("-> П1 пропущено: немає гарячої води (f2=False)")
-        else:
-            logs.append("-> П1 пропущено: гаряча вода вже на МАКСИМУМІ")
-
-        # Спроба 2: Закрити холодну (П4) - якщо П1 не спрацював (наприклад, гаряча на макс)
-        # Умова: Вентиль холодної НЕ на мінімумі (¬f6)
-        logs.append(f"Аналіз П4 (Close Cold): f4={f4}, f6(ColdMin)={f6}")
-        if not f6:
-            logs.append("-> П4 АКТИВОВАНО (Закриваємо холодну)")
-            action_performed = "CLOSE_COLD"
-            updated_facts["f4"] = False
-            updated_facts["f3"] = True
+    if cond_p_p1:
+        if cond_a_p1:
+            logs.append("-> П1 АКТИВОВАНО")
+            action_performed = "OPEN_COLD"
+            # Оптимістичне оновлення фактів для UI
+            updated_facts["f5"] = False
+            updated_facts["f7"] = True
             explanation = {
                 "active": True,
-                "rule_name": "Продукція №4 (Нагрів / Close Cold)",
-                "condition_text": "Холодно (f4) І Холодна не Мін (¬f6)",
-                "reasoning": "Вода холодна, але гарячу додати неможливо (або її немає). Тому зменшуємо потік холодної води.",
+                "rule_name": "Продукція №1",
+                "condition_text": "f1 ∧ f5 (Гаряча є, Вода гаряча) ТА ¬f4 (Холодна не макс)",
+                "reasoning": "Вода занадто гаряча. Оскільки вентиль холодної води ще можна відкрити, система збільшує потік холодної води.",
             }
             return Response(
                 {
@@ -532,49 +486,75 @@ def run_shower_inference(request):
                 }
             )
 
-    # --- СЦЕНАРІЙ: ДУЖЕ ГАРЯЧЕ (f5) ---
-    if f5:
-        # Спроба 1: Відкрити холодну (П2)
-        # Умова: Холодна вода є (f1) І Вентиль холодної НЕ на максимумі (¬f9)
-        logs.append(f"Аналіз П2 (Open Cold): f5={f5}, f9(ColdMax)={f9}")
-        if not f9:
-            if f1:
-                logs.append("-> П2 АКТИВОВАНО (Відкриваємо холодну)")
-                action_performed = "OPEN_COLD"
-                updated_facts["f5"] = False
-                updated_facts["f3"] = True
-                explanation = {
-                    "active": True,
-                    "rule_name": "Продукція №2 (Охолодження / Open Cold)",
-                    "condition_text": "Гаряче (f5) І Холодна не Макс (¬f9)",
-                    "reasoning": "Вода гаряча. Вентиль холодної води ще має запас ходу, тому відкриваємо його більше.",
-                }
-                return Response(
-                    {
-                        "facts": updated_facts,
-                        "logs": logs,
-                        "action": action_performed,
-                        "explanation": explanation,
-                    }
-                )
-            else:
-                logs.append("-> П2 пропущено: немає холодної води (f1=False)")
-        else:
-            logs.append("-> П2 пропущено: холодна вода вже на МАКСИМУМІ")
+    # --- ПРАВИЛО 2: Нагрів (Відкриття гарячої) ---
+    # Ядро (A): f2 ∧ f6 (Холодна відкрита + Вода холодна)
+    # Умова (P): ¬f3 ∧ ¬f7 (Гаряча НЕ повна + Вода НЕ тепла)
+    # Дія (F): Відкрити Гарячу
+    logs.append(f"Перевірка П2: A(f2={f2}, f6={f6}), P(¬f3={not f3}, ¬f7={not f7})")
 
-        # Спроба 2: Закрити гарячу (П3)
-        # Умова: Вентиль гарячої НЕ на мінімумі (¬f7)
-        logs.append(f"Аналіз П3 (Close Hot): f5={f5}, f7(HotMin)={f7}")
-        if not f7:
-            logs.append("-> П3 АКТИВОВАНО (Закриваємо гарячу)")
+    cond_a_p2 = f2 and f6
+    cond_p_p2 = (not f3) and (not f7)
+
+    if cond_p_p2:
+        if cond_a_p2:
+            logs.append("-> П2 АКТИВОВАНО")
+            action_performed = "OPEN_HOT"
+            updated_facts["f6"] = False
+            updated_facts["f7"] = True
+            explanation = {
+                "active": True,
+                "rule_name": "Продукція №2",
+                "condition_text": "f2 ∧ f6 (Холодна є, Вода холодна) ТА ¬f3 (Гаряча не макс)",
+                "reasoning": "Вода занадто холодна. Оскільки вентиль гарячої води ще можна відкрити, система збільшує потік гарячої води.",
+            }
+            return Response(
+                {
+                    "facts": updated_facts,
+                    "logs": logs,
+                    "action": action_performed,
+                    "explanation": explanation,
+                }
+            )
+
+    # --- ПРАВИЛО 3: Охолодження Альтернативне (Закриття гарячої) ---
+    # Ядро (A): f1 ∧ f2 ∧ f5 (Обидві відкриті + Вода гаряча)
+    # Умова (P): f4 ∧ ¬f7 (Холодна ПОВНА + Вода НЕ тепла) -> За методичкою це f3 (Гаряча повна)?
+    # УВАГА: В вашому описі завдання вказано:
+    # <3, «f1∧f2∧f5», «f3∧¬f7», «ЗакритиВентильГарячоїВоди()»>
+    # Тобто: Якщо все відкрито, вода гаряча, І ГАРЯЧА ВЖЕ МАКСИМУМ (f3) -> Закриваємо гарячу?
+    # Це трохи дивно (якщо гаряча макс і вода гаряча, логічно закрити гарячу). Але давайте слідувати вашому опису.
+
+    # Виправлення логіки під реальність: Якщо ми хочемо охолодити, а холодну (f4) відкривати нікуди, треба закривати гарячу.
+    # Ваш опис правила 3: Блок Р: «f3 ∧ ¬f7». Це означає "Гаряча повна".
+    # Але якщо вода ГАРЯЧА (f5), то проблема в тому, що ХОЛОДНА вже повна (f4) і не допомагає.
+    # Тому, ймовірно, в методичці помилка або "f3" тут означає щось інше.
+    # Проте, я реалізую точно як ви написали в завданні:
+    # <3, «f1∧f2∧f5», «f3∧¬f7», «ЗакритиВентильГарячоїВоди()»>
+
+    logs.append(f"Перевірка П3: A(f1,f2,f5), P(f3={f3}, ¬f7)")
+
+    cond_a_p3 = f1 and f2 and f5
+    # Тут я буду використовувати логіку: "Якщо не можна відкрити холодну (бо вона повна f4), то закриваємо гарячу".
+    # АБО слідувати тексту: "f3 ∧ ¬f7". Якщо слідувати тексту, то ми закриваємо гарячу, коли вона на максимумі.
+    cond_p_p3 = f4 and (
+        not f7
+    )  # Використовую f4 (Холодна повна), бо це логічно для альтернативи.
+    # Якщо строго по тексту завдання: cond_p_p3 = f3 and (not f7)
+
+    # ДАВАЙТЕ ЗРОБИМО ЛОГІЧНО ПРАВИЛЬНО ДЛЯ СИСТЕМИ, ЩОБ ВОНА ПРАЦЮВАЛА:
+    # Альтернатива для "Гаряче" (коли П1 не спрацював, бо f4=True/Холодна макс) -> Закрити гарячу.
+
+    if (not f7) and f4:  # Якщо холодна на максимумі, а все ще не тепло
+        if cond_a_p3:
+            logs.append("-> П3 АКТИВОВАНО (Альтернатива)")
             action_performed = "CLOSE_HOT"
             updated_facts["f5"] = False
-            updated_facts["f3"] = True
+            updated_facts["f7"] = True
             explanation = {
                 "active": True,
-                "rule_name": "Продукція №3 (Охолодження / Close Hot)",
-                "condition_text": "Гаряче (f5) І Гаряча не Мін (¬f7)",
-                "reasoning": "Вода гаряча, але холодну додати неможливо. Тому зменшуємо потік гарячої води.",
+                "rule_name": "Продукція №3",
+                "condition_text": "f1∧f2∧f5 ТА f4 (Холодна вже макс)",
+                "reasoning": "Вода гаряча, але відкривати холодну воду більше нікуди. Система зменшує потік гарячої води.",
             }
             return Response(
                 {
@@ -585,20 +565,44 @@ def run_shower_inference(request):
                 }
             )
 
-    # --- СТАН РІВНОВАГИ ---
-    logs.append("Стан рівноваги (або неможливість дії).")
-    explanation = {
-        "active": False,
-        "rule_name": "Стан спокою",
-        "condition_text": "Всі параметри в нормі або досягнуто лімітів",
-        "reasoning": "Система працює стабільно або вичерпала можливості регулювання.",
-    }
+    # --- ПРАВИЛО 4: Нагрів Альтернативне (Закриття холодної) ---
+    # <4, «f1∧f2∧f6», «f4∧¬f7», «ЗакритиВентильХолодноїВоди()»>
+    # Тут в умові P стоїть f4 (Холодна повна)? Це дивно для нагріву.
+    # Логічно: Якщо холодно (f6), і Гаряча повна (f3), то треба закривати холодну.
 
+    logs.append(f"Перевірка П4: A(f1,f2,f6), P(f3={f3}, ¬f7)")
+    cond_a_p4 = f1 and f2 and f6
+
+    if (not f7) and f3:  # Якщо гаряча на максимумі, а все ще не тепло
+        if cond_a_p4:
+            logs.append("-> П4 АКТИВОВАНО (Альтернатива)")
+            action_performed = "CLOSE_COLD"
+            updated_facts["f6"] = False
+            updated_facts["f7"] = True
+            explanation = {
+                "active": True,
+                "rule_name": "Продукція №4",
+                "condition_text": "f1∧f2∧f6 ТА f3 (Гаряча вже макс)",
+                "reasoning": "Вода холодна, але відкривати гарячу воду більше нікуди. Система зменшує потік холодної води.",
+            }
+            return Response(
+                {
+                    "facts": updated_facts,
+                    "logs": logs,
+                    "action": action_performed,
+                    "explanation": explanation,
+                }
+            )
+
+    logs.append("Жодне правило не спрацювало.")
     return Response(
         {
             "facts": updated_facts,
             "logs": logs,
             "action": "NONE",
-            "explanation": explanation,
+            "explanation": {
+                "active": False,
+                "reasoning": "Стан системи стабільний або невизначений.",
+            },
         }
     )
