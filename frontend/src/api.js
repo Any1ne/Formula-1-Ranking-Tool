@@ -28,6 +28,15 @@ export async function createObject(data) {
   return res.json();
 }
 
+// --- ДОДАНО ФУНКЦІЮ ---
+export async function clearObjects() {
+  const res = await fetch(`${API_URL}/clear-objects/`, {
+    method: "POST",
+  });
+  return res.json();
+}
+// ----------------------
+
 export async function uploadCSV(file) {
   const formData = new FormData();
   formData.append("file", file);
